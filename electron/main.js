@@ -20,11 +20,16 @@ function startBackend() {
       ? path.join(process.resourcesPath, 'backend', 'src', 'index.js')
       : path.join(__dirname, '../backend/src/index.js');
 
+    const frontendDist = app.isPackaged
+      ? path.join(process.resourcesPath, 'frontend', 'dist')
+      : path.join(__dirname, '../frontend/dist');
+
     backendProc = fork(entry, [], {
       env: {
         ...process.env,
         PORT: String(PORT),
         TRADING_JOURNAL_DB: DB_PATH,
+        FRONTEND_DIST: frontendDist,
         NODE_ENV: 'production',
       },
       silent: true,

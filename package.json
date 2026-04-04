@@ -8,9 +8,11 @@
     "install-all": "npm install --prefix backend && npm install --prefix frontend",
     "electron:dev": "electron .",
     "electron:build": "npm run build-frontend && electron-builder --mac",
-    "electron:build-win": "npm run build-frontend && electron-builder --win"
+    "electron:build-win": "npm run build-frontend && electron-builder --win",
+    "electron:publish": "npm run build-frontend && electron-builder --mac --publish always"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
     "electron": "^29.0.0",
     "electron-builder": "^24.9.1"
   },
@@ -32,20 +34,37 @@
       {
         "from": "backend",
         "to": "backend",
-        "filter": ["**/*", "!data/**/*", "!node_modules/.cache/**/*"]
+        "filter": [
+          "**/*",
+          "!data/**/*",
+          "!node_modules/.cache/**/*"
+        ]
+      },
+      {
+        "from": "frontend/dist",
+        "to": "frontend/dist"
       }
     ],
     "mac": {
       "category": "public.app-category.finance",
-      "icon": "frontend/public/logo-dark.png",
+      "icon": "build/icon.png",
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ]
     },
     "dmg": {
       "title": "Trading Journal",
       "background": null,
-      "window": { "width": 540, "height": 380 }
+      "window": {
+        "width": 540,
+        "height": 380
+      }
     },
     "publish": {
       "provider": "github",

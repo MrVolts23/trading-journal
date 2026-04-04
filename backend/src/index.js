@@ -59,7 +59,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Serve built React frontend (used in Electron / production — only active when dist exists)
-const frontendDist = path.join(__dirname, '../../frontend/dist');
+const frontendDist = process.env.FRONTEND_DIST || path.join(__dirname, '../../frontend/dist');
 const fs = require('fs');
 if (fs.existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
