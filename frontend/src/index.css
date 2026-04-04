@@ -1,0 +1,171 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Theme CSS Variables ────────────────────────────────────────────────────── */
+/* Dark theme (default) — RGB space-separated for opacity variant support */
+:root {
+  --t-bg:        #0a0a0a;
+  --t-surface:   #111111;
+  --t-card:      #141414;
+  --t-hover:     #1a1a1a;
+  --t-blue:      #4488ff;
+  --t-gray:      #666666;
+  --t-text:      #e0e0e0;
+  --t-muted:     #888888;
+  /* RGB channels for opacity variants */
+  --t-green:     0 255 136;
+  --t-green-dim: 0 204 106;
+  --t-red:       255 68 68;
+  --t-red-dim:   204 51 51;
+  --t-amber:     255 170 0;
+  --t-border:    30 30 30;
+  --t-dim:       85 85 85;
+}
+
+/* Light theme */
+:root.light {
+  --t-bg:        #f4f4f5;
+  --t-surface:   #ffffff;
+  --t-card:      #ffffff;
+  --t-hover:     #f1f5f9;
+  --t-blue:      #2563eb;
+  --t-gray:      #71717a;
+  --t-text:      #18181b;
+  --t-muted:     #71717a;
+  /* RGB channels for opacity variants */
+  --t-green:     5 150 82;
+  --t-green-dim: 4 122 66;
+  --t-red:       220 38 38;
+  --t-red-dim:   185 28 28;
+  --t-amber:     217 119 6;
+  --t-border:    228 228 231;
+  --t-dim:       161 161 170;
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  html, body {
+    @apply bg-terminal-bg text-terminal-text;
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--t-bg); }
+  ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
+
+  :root.light ::-webkit-scrollbar-thumb { background: #d4d4d8; }
+  :root.light ::-webkit-scrollbar-thumb:hover { background: #a1a1aa; }
+
+  ::selection { background: rgba(0, 255, 136, 0.2); color: #00ff88; }
+  :root.light ::selection { background: rgba(5, 150, 82, 0.2); color: #059652; }
+}
+
+@layer components {
+  .card {
+    @apply bg-terminal-card border border-terminal-border rounded-lg;
+  }
+
+  .card-hover {
+    @apply card hover:border-terminal-dim transition-colors duration-150;
+  }
+
+  .stat-label {
+    @apply text-xs font-mono text-terminal-muted uppercase tracking-widest;
+  }
+
+  .stat-value {
+    @apply text-2xl font-mono font-semibold text-terminal-text;
+  }
+
+  .badge-win {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium bg-green-950 text-terminal-green border border-green-800;
+  }
+
+  .badge-loss {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium bg-red-950 text-terminal-red border border-red-900;
+  }
+
+  .badge-be {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium bg-neutral-900 text-terminal-gray border border-neutral-700;
+  }
+
+  .badge-open {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium bg-blue-950 text-terminal-blue border border-blue-900;
+  }
+
+  .btn-primary {
+    @apply px-4 py-2 bg-terminal-green text-black text-sm font-mono font-semibold rounded hover:bg-terminal-green-dim transition-colors;
+  }
+
+  .btn-ghost {
+    @apply px-4 py-2 bg-transparent border border-terminal-border text-terminal-muted text-sm font-mono rounded hover:border-terminal-dim hover:text-terminal-text transition-colors;
+  }
+
+  .input-field {
+    @apply bg-terminal-surface border border-terminal-border rounded px-3 py-2 text-sm font-mono text-terminal-text
+    placeholder-terminal-dim focus:outline-none focus:border-terminal-green transition-colors;
+  }
+
+  .select-field {
+    @apply bg-terminal-surface border border-terminal-border rounded px-3 py-2 text-sm font-mono text-terminal-text
+    focus:outline-none focus:border-terminal-green transition-colors cursor-pointer;
+  }
+
+  .table-header {
+    @apply text-xs font-mono text-terminal-muted uppercase tracking-wider px-4 py-3 text-left;
+  }
+
+  .table-cell {
+    @apply px-4 py-3 text-sm font-mono text-terminal-text;
+  }
+
+  .pnl-positive { @apply text-terminal-green; }
+  .pnl-negative { @apply text-terminal-red; }
+  .pnl-zero { @apply text-terminal-gray; }
+}
+
+@layer utilities {
+  .font-mono-nums {
+    font-variant-numeric: tabular-nums;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .glow-green {
+    box-shadow: 0 0 12px rgba(0, 255, 136, 0.15);
+  }
+
+  .border-green-glow {
+    border-color: rgba(0, 255, 136, 0.4);
+    box-shadow: 0 0 8px rgba(0, 255, 136, 0.1);
+  }
+}
+
+/* ── Light mode overrides for hardcoded Tailwind bg classes ─────────────────── */
+/* Badges */
+:root.light .badge-win  { background-color: #dcfce7; color: #15803d; border-color: #86efac; }
+:root.light .badge-loss { background-color: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+:root.light .badge-be   { background-color: #f4f4f5; color: #52525b; border-color: #d4d4d8; }
+:root.light .badge-open { background-color: #dbeafe; color: #2563eb; border-color: #93c5fd; }
+
+/* Error / warning / success tinted boxes */
+:root.light .bg-red-950   { background-color: #fff1f2 !important; }
+:root.light .bg-red-950\/50 { background-color: rgba(255,241,242,0.5) !important; }
+:root.light .border-red-900 { border-color: #fca5a5 !important; }
+:root.light .text-red-400   { color: #dc2626 !important; }
+
+:root.light .bg-green-950    { background-color: #f0fdf4 !important; }
+:root.light .border-green-800 { border-color: #86efac !important; }
+
+:root.light .bg-amber-950\/20 { background-color: rgba(255,251,235,0.8) !important; }
+:root.light .border-amber-900\/50 { border-color: rgba(252,211,77,0.5) !important; }
+
+:root.light .bg-blue-950  { background-color: #eff6ff !important; }
+:root.light .border-blue-900 { border-color: #93c5fd !important; }
+:root.light .text-blue-400 { color: #2563eb !important; }
+
+:root.light .bg-neutral-900 { background-color: #f4f4f5 !important; }
+:root.light .border-neutral-700 { border-color: #d4d4d8 !important; }

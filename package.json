@@ -1,0 +1,57 @@
+{
+  "name": "mikes-trading-journal",
+  "version": "1.0.0",
+  "description": "Mike's Trading Journal — desktop app",
+  "main": "electron/main.js",
+  "scripts": {
+    "build-frontend": "npm run build --prefix frontend",
+    "install-all": "npm install --prefix backend && npm install --prefix frontend",
+    "electron:dev": "electron .",
+    "electron:build": "npm run build-frontend && electron-builder --mac",
+    "electron:build-win": "npm run build-frontend && electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^29.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.8"
+  },
+  "build": {
+    "appId": "com.mike.tradingjournal",
+    "productName": "Trading Journal",
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*",
+      "backend/src/**/*",
+      "backend/package.json",
+      "backend/node_modules/**/*",
+      "!backend/data/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": ["**/*", "!data/**/*", "!node_modules/.cache/**/*"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.finance",
+      "icon": "frontend/public/logo-dark.png",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ]
+    },
+    "dmg": {
+      "title": "Trading Journal",
+      "background": null,
+      "window": { "width": 540, "height": 380 }
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "MrVolts23",
+      "repo": "trading-journal"
+    },
+    "npmRebuild": true
+  }
+}
