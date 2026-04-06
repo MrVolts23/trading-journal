@@ -82,7 +82,12 @@ function setupUpdater() {
     mainWindow?.webContents.send('update-available', info.version);
   });
 
+  autoUpdater.on('update-not-available', () => {
+    mainWindow?.webContents.send('update-not-available');
+  });
+
   autoUpdater.on('update-downloaded', () => {
+    mainWindow?.webContents.send('update-downloaded');
     dialog.showMessageBox(mainWindow, {
       type: 'info',
       title: 'Update ready',
@@ -94,6 +99,12 @@ function setupUpdater() {
   });
 
   autoUpdater.on('error', err => console.error('[updater]', err.message));
+
+  // Allow renderer to manually trigger a check
+  const { ipcMain } = require('electron');
+  ipcMain.on('check-for-updates', () => {
+    if (app.isPackaged) autoUpdater.checkForUpdates();
+  });
 
   if (app.isPackaged) {
     // Check on startup, then every 15 minutes

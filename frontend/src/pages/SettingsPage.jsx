@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Check, Plus, Trash2, AlertTriangle, X, Pencil, Save } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Check, Plus, Trash2, AlertTriangle, X, Pencil, Save, RefreshCw } from 'lucide-react';
 import { getSettings, updateSettings, getAccounts, deleteAccount, getMistakeTypes, createMistakeType, updateMistakeType, deleteMistakeType, postBalanceCorrection, getAccountActivity, deleteAccountActivity } from '../lib/api';
 import api from '../lib/api';
 
@@ -302,6 +302,63 @@ function NewsCurrenciesCard() {
         News data is fetched from Forex Factory via nfs.faireconomy.media and cached locally.
         Current &amp; next week data refreshes every 30 minutes. Historical months build up over time.
       </p>
+    </div>
+  );
+}
+
+// ── Check for Updates Card ─────────────────────────────────────────────────
+function CheckForUpdatesCard() {
+  const isElectron = !!window.electronAPI;
+  const [status, setStatus] = useState('idle'); // idle | checking | up-to-date | update-available | downloaded
+  const [version, setVersion] = useState('');
+  const listenersAdded = useRef(false);
+
+  useEffect(() => {
+    if (!isElectron || listenersAdded.current) return;
+    listenersAdded.current = true;
+    window.electronAPI.onUpdateAvailable((v)    => { setVersion(v); setStatus('update-available'); });
+    window.electronAPI.onUpdateNotAvailable(()  => setStatus('up-to-date'));
+    window.electronAPI.onUpdateDownloaded(()    => setStatus('downloaded'));
+  }, [isElectron]);
+
+  const check = () => {
+    setStatus('checking');
+    window.electronAPI.checkForUpdates();
+    // Fall back to "up-to-date" after 10 s if no response (e.g. offline)
+    setTimeout(() => setStatus(s => s === 'checking' ? 'up-to-date' : s), 10000);
+  };
+
+  if (!isElectron) return null; // hide in browser/dev mode
+
+  const statusText = {
+    idle:             '',
+    checking:         'Checking…',
+    'up-to-date':     '✓ You\'re on the latest version',
+    'update-available': `⬇ v${version} is downloading in the background…`,
+    downloaded:       '✅ Update downloaded — restart the app to apply it',
+  }[status];
+
+  return (
+    <div className="card p-5 space-y-3">
+      <div className="stat-label">App Updates</div>
+      <p className="text-xs font-mono text-terminal-muted">
+        The app checks for updates automatically every 15 minutes. You can also check manually below.
+      </p>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={check}
+          disabled={status === 'checking'}
+          className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs disabled:opacity-40"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${status === 'checking' ? 'animate-spin' : ''}`} />
+          Check for Updates
+        </button>
+        {statusText && (
+          <span className={`text-xs font-mono ${status === 'downloaded' ? 'text-green-400' : status === 'update-available' ? 'text-amber-400' : 'text-terminal-dim'}`}>
+            {statusText}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -716,6 +773,9 @@ export default function SettingsPage() {
 
       {/* ── MISTAKE TYPES ────────────────────────────────────────────────── */}
       <MistakeTypesCard />
+
+      {/* ── APP UPDATES ──────────────────────────────────────────────────── */}
+      <CheckForUpdatesCard />
 
       <button onClick={save} className="btn-primary flex items-center gap-2">
         {saved ? <><Check className="w-4 h-4" /> Saved!</> : 'Save Settings'}
