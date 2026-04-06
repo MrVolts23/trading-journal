@@ -95,8 +95,11 @@ function setupUpdater() {
 
   autoUpdater.on('error', err => console.error('[updater]', err.message));
 
-  // Check on startup (only in packaged builds)
-  if (app.isPackaged) autoUpdater.checkForUpdates();
+  if (app.isPackaged) {
+    // Check on startup, then every 15 minutes
+    autoUpdater.checkForUpdates();
+    setInterval(() => autoUpdater.checkForUpdates(), 15 * 60 * 1000);
+  }
 }
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
