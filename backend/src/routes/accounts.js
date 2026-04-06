@@ -40,6 +40,31 @@ router.post('/', (req, res) => {
   res.json({ id: result.lastInsertRowid });
 });
 
+// GET settings — must be before /:id so Express doesn't swallow it
+router.get('/settings', (req, res) => {
+  const db = getDb();
+  const rows = db.prepare('SELECT key, value FROM settings').all();
+  const settings = {};
+  rows.forEach(r => {
+    try { settings[r.key] = JSON.parse(r.value); }
+    catch { settings[r.key] = r.value; }
+  });
+  res.json(settings);
+});
+
+// PATCH settings — must be before /:id so Express doesn't swallow it
+router.patch('/settings', (req, res) => {
+  const db = getDb();
+  const upsert = db.prepare(`
+    INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `);
+  Object.entries(req.body).forEach(([k, v]) => {
+    upsert.run(k, typeof v === 'string' ? v : JSON.stringify(v));
+  });
+  res.json({ success: true });
+});
+
 // PATCH account — update initial_deposit (starting balance)
 router.patch('/:id', (req, res) => {
   const db = getDb();
@@ -160,31 +185,6 @@ router.post('/:id/correction', (req, res) => {
   `).run(account.name, correctionDate, correctionAmount, newBalance, newTotal, newPeak, notes || null);
 
   res.json({ id: result.lastInsertRowid, account: account.name, amount: correctionAmount, date: correctionDate });
-});
-
-// GET settings
-router.get('/settings', (req, res) => {
-  const db = getDb();
-  const rows = db.prepare('SELECT key, value FROM settings').all();
-  const settings = {};
-  rows.forEach(r => {
-    try { settings[r.key] = JSON.parse(r.value); }
-    catch { settings[r.key] = r.value; }
-  });
-  res.json(settings);
-});
-
-// PATCH settings
-router.patch('/settings', (req, res) => {
-  const db = getDb();
-  const upsert = db.prepare(`
-    INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-  `);
-  Object.entries(req.body).forEach(([k, v]) => {
-    upsert.run(k, typeof v === 'string' ? v : JSON.stringify(v));
-  });
-  res.json({ success: true });
 });
 
 module.exports = router;
