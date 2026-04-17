@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useOutletContext } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Zap } from 'lucide-react';
-import { getCalendar, getMetaDriftCalendar, getNewsEvents } from '../lib/api';
+import { getCalendar, getMetaDriftCalendar, getNewsEvents, getTrades } from '../lib/api';
 import { fmtCurrency, MONTH_NAMES } from '../lib/utils';
 
 const IMPACT_COLOR = { High: '#ef4444', Medium: '#f59e0b' };
@@ -77,6 +77,105 @@ function NewsPopup({ events, dateStr, anchorRect, onClose }) {
   );
 }
 
+// ── Trades popup ───────────────────────────────────────────────────────────────
+function TradesPopup({ dateStr, anchorRect, account, onClose }) {
+  const ref = useRef(null);
+  const [trades, setTrades] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getTrades({ dateStart: dateStr, dateEnd: dateStr, account, limit: 50, sort: 'entry_datetime', dir: 'ASC' })
+      .then(data => { setTrades(data.trades || data || []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [dateStr, account]);
+
+  useEffect(() => {
+    function handleClick(e) { if (ref.current && !ref.current.contains(e.target)) onClose(); }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [onClose]);
+
+  const popupW = 300;
+  const maxH   = 360;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  let left = anchorRect ? anchorRect.left : 0;
+  if (left + popupW > vw - 8) left = vw - popupW - 8;
+  if (left < 8) left = 8;
+
+  const spaceBelow = anchorRect ? vh - anchorRect.bottom - 8 : 0;
+  const spaceAbove = anchorRect ? anchorRect.top - 8 : 0;
+  const useBelow   = spaceBelow >= Math.min(maxH, 200) || spaceBelow >= spaceAbove;
+  const top    = useBelow  ? (anchorRect ? anchorRect.bottom + 4 : 100) : undefined;
+  const bottom = !useBelow ? (anchorRect ? vh - anchorRect.top + 4 : 120) : undefined;
+
+  const totalPnl = trades.reduce((s, t) => s + (t.pnl || 0), 0);
+
+  return createPortal(
+    <div ref={ref}
+      className="rounded-lg border border-terminal-border bg-terminal-bg shadow-2xl overflow-hidden"
+      style={{ position: 'fixed', top, bottom, left, width: popupW, maxHeight: maxH, zIndex: 9999 }}
+      onClick={e => e.stopPropagation()}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-terminal-border bg-terminal-surface">
+        <span className="text-[10px] font-mono text-terminal-dim uppercase tracking-widest">
+          {new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+        </span>
+        {!loading && trades.length > 0 && (
+          <span className={`text-xs font-mono font-bold ${totalPnl >= 0 ? 'text-terminal-green' : 'text-terminal-red'}`}>
+            {fmtCurrency(totalPnl, true)}
+          </span>
+        )}
+      </div>
+
+      {/* Trade list */}
+      <div className="overflow-y-auto" style={{ maxHeight: maxH - 40 }}>
+        {loading ? (
+          <div className="px-3 py-4 text-xs font-mono text-terminal-dim text-center animate-pulse">Loading…</div>
+        ) : trades.length === 0 ? (
+          <div className="px-3 py-4 text-xs font-mono text-terminal-dim text-center">No trades on this day</div>
+        ) : (
+          trades.map((t, i) => {
+            const isWin  = t.pnl > 0;
+            const isLoss = t.pnl < 0;
+            return (
+              <div key={t.trade_id || i}
+                className={`flex items-center justify-between px-3 py-2 border-b border-terminal-border/40 last:border-b-0 hover:bg-terminal-surface/50 transition-colors`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {/* W / L badge */}
+                  <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${
+                    isWin  ? 'bg-green-900/40 text-green-400 border border-green-700/50' :
+                    isLoss ? 'bg-red-900/40 text-red-400 border border-red-700/50' :
+                             'bg-terminal-surface text-terminal-dim border border-terminal-border'
+                  }`}>
+                    {isWin ? 'W' : isLoss ? 'L' : 'B'}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-mono font-semibold text-terminal-text truncate">{t.symbol}</div>
+                    {t.strategy && <div className="text-[10px] font-mono text-terminal-dim truncate">{t.strategy}</div>}
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0 ml-2">
+                  <div className={`text-sm font-mono font-bold ${isWin ? 'text-terminal-green' : isLoss ? 'text-terminal-red' : 'text-terminal-dim'}`}>
+                    {t.pnl != null ? fmtCurrency(t.pnl, true) : '—'}
+                  </div>
+                  {t.r_multiple != null && (
+                    <div className="text-[10px] font-mono text-terminal-dim">{t.r_multiple > 0 ? '+' : ''}{Number(t.r_multiple).toFixed(2)}R</div>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // Watches for light/dark class changes on <html>
 function useIsLight() {
   const [isLight, setIsLight] = useState(() =>
@@ -125,7 +224,8 @@ export default function CalendarPage() {
   const [loading,      setLoading]      = useState(true);
   const [weekTotals,   setWeekTotals]   = useState([]);
   const [newsMap,      setNewsMap]      = useState({});   // dateStr → [events]
-  const [openNews, setOpenNews] = useState(null); // { dateStr, rect } of open popup
+  const [openNews,   setOpenNews]   = useState(null); // { dateStr, rect }
+  const [openTrades, setOpenTrades] = useState(null); // { dateStr, rect }
 
   // Text colours for cells — white on dark bg, near-black on light bg
   const cellText     = isLight ? 'text-gray-900'    : 'text-white';
@@ -356,14 +456,28 @@ export default function CalendarPage() {
                   const hasHigh        = cellNews.some(e => e.impact === 'High');
                   const newsOpen       = openNews?.dateStr === cell.dateStr;
 
+                  const tradesOpen = openTrades?.dateStr === cell.dateStr;
                   return (
                     <div
                       key={di}
                       className={`border-r border-terminal-border/50 p-2 flex flex-col relative ${
                         isToday ? 'ring-1 ring-inset ring-terminal-green/40' : ''
-                      }`}
+                      } ${data ? 'cursor-pointer hover:brightness-110 transition-all' : ''}`}
                       style={{ minHeight: '140px', backgroundColor: bg }}
+                      onClick={data ? (e) => {
+                        if (e.target.closest('button')) return; // don't steal news button clicks
+                        setOpenNews(null);
+                        setOpenTrades(tradesOpen ? null : { dateStr: cell.dateStr, rect: e.currentTarget.getBoundingClientRect() });
+                      } : undefined}
                     >
+                    {tradesOpen && (
+                      <TradesPopup
+                        dateStr={cell.dateStr}
+                        anchorRect={openTrades.rect}
+                        account={filters.account}
+                        onClose={() => setOpenTrades(null)}
+                      />
+                    )}
                       <div className={`text-xs font-mono font-semibold mb-1 ${
                         isToday ? 'text-terminal-green' : data ? cellText : 'text-terminal-muted'
                       }`}>
