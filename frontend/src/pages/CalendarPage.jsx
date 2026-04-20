@@ -19,6 +19,34 @@ function utcToLocal(dateStr, timeStr) {
 }
 
 // ── News popup ─────────────────────────────────────────────────────────────────
+// Shared popup positioning — always keeps popup fully on screen, gravitates to center
+function calcPopupPos(anchorRect, popupW, maxH) {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const pad = 8;
+
+  // Horizontal: center on anchor, clamp to viewport
+  let left = anchorRect
+    ? anchorRect.left + anchorRect.width / 2 - popupW / 2
+    : vw / 2 - popupW / 2;
+  left = Math.max(pad, Math.min(left, vw - popupW - pad));
+
+  // Vertical: prefer below, fall back to above, last resort center screen
+  const spaceBelow = anchorRect ? vh - anchorRect.bottom - pad : 0;
+  const spaceAbove = anchorRect ? anchorRect.top - pad : 0;
+  let top;
+  if (anchorRect && spaceBelow >= Math.min(maxH, 180)) {
+    top = anchorRect.bottom + 4;
+  } else if (anchorRect && spaceAbove >= Math.min(maxH, 180)) {
+    top = anchorRect.top - Math.min(maxH, spaceAbove) - 4;
+  } else {
+    top = Math.max(pad, vh / 2 - maxH / 2);
+  }
+  top = Math.max(pad, Math.min(top, vh - maxH - pad));
+
+  return { left, top };
+}
+
 function NewsPopup({ events, dateStr, anchorRect, onClose }) {
   const ref = useRef(null);
   useEffect(() => {
@@ -27,27 +55,14 @@ function NewsPopup({ events, dateStr, anchorRect, onClose }) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [onClose]);
 
-  // Smart positioning: open below button unless there's not enough room, then above
-  const popupW = 288; // w-72
+  const popupW = 288;
   const maxH   = 340;
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-
-  let left = anchorRect ? anchorRect.left : 0;
-  if (left + popupW > vw - 8) left = vw - popupW - 8;
-  if (left < 8) left = 8;
-
-  // Decide top vs bottom positioning
-  const spaceBelow = anchorRect ? vh - anchorRect.bottom - 8 : 0;
-  const spaceAbove = anchorRect ? anchorRect.top - 8 : 0;
-  const useBelow   = spaceBelow >= Math.min(maxH, 200) || spaceBelow >= spaceAbove;
-  const top  = useBelow ? (anchorRect ? anchorRect.bottom + 4 : 100) : undefined;
-  const bottom = !useBelow ? (anchorRect ? vh - anchorRect.top + 4 : 120) : undefined;
+  const { left, top } = calcPopupPos(anchorRect, popupW, maxH);
 
   return createPortal(
     <div ref={ref}
       className="rounded-lg border border-terminal-border bg-terminal-bg shadow-2xl p-3 space-y-2 overflow-y-auto"
-      style={{ position: 'fixed', top, bottom, left, width: popupW, maxHeight: maxH, zIndex: 9999 }}
+      style={{ position: 'fixed', top, left, width: popupW, maxHeight: maxH, zIndex: 9999 }}
       onClick={e => e.stopPropagation()}
     >
       <div className="text-[10px] font-mono text-terminal-dim uppercase tracking-widest mb-1">News Events</div>
@@ -97,25 +112,14 @@ function TradesPopup({ dateStr, anchorRect, account, onClose }) {
 
   const popupW = 300;
   const maxH   = 360;
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-
-  let left = anchorRect ? anchorRect.left : 0;
-  if (left + popupW > vw - 8) left = vw - popupW - 8;
-  if (left < 8) left = 8;
-
-  const spaceBelow = anchorRect ? vh - anchorRect.bottom - 8 : 0;
-  const spaceAbove = anchorRect ? anchorRect.top - 8 : 0;
-  const useBelow   = spaceBelow >= Math.min(maxH, 200) || spaceBelow >= spaceAbove;
-  const top    = useBelow  ? (anchorRect ? anchorRect.bottom + 4 : 100) : undefined;
-  const bottom = !useBelow ? (anchorRect ? vh - anchorRect.top + 4 : 120) : undefined;
+  const { left, top } = calcPopupPos(anchorRect, popupW, maxH);
 
   const totalPnl = trades.reduce((s, t) => s + (t.pnl || 0), 0);
 
   return createPortal(
     <div ref={ref}
       className="rounded-lg border border-terminal-border bg-terminal-bg shadow-2xl overflow-hidden"
-      style={{ position: 'fixed', top, bottom, left, width: popupW, maxHeight: maxH, zIndex: 9999 }}
+      style={{ position: 'fixed', top, left, width: popupW, maxHeight: maxH, zIndex: 9999 }}
       onClick={e => e.stopPropagation()}
     >
       {/* Header */}
