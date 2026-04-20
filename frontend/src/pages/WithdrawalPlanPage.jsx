@@ -161,9 +161,10 @@ function generateWeeks(settings, weeklyPnlData, midPlanDeposits = [], actualsMap
       return { startBal, endBal, growth, withdrawal, nextStart, aboveCeiling };
     });
 
-    // Dynamic rebase: rebase on real trade weeks OR weeks with a new deposit.
-    // Deposits shift the actual balance so the forecast must project from the new base.
-    if (hasActualTrades || (depositThisWeek > 0 && actualEndBal !== null)) {
+    // Dynamic rebase: only rebase on COMPLETED weeks (isPast).
+    // The current week may have partial trades but isn't done — rebasing off it
+    // would distort all future projections with incomplete data.
+    if (isPast && (hasActualTrades || (depositThisWeek > 0 && actualEndBal !== null))) {
       forecastBals.forEach((_, si) => { forecastBals[si] = actualEndBal; });
     }
 
