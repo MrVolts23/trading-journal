@@ -61,44 +61,70 @@ const DEFAULT_PARAMS = {
 // ── Component ──────────────────────────────────────────────────────────────────
 export default function RewardManagementPage() {
   const [accounts,        setAccounts]        = useState([]);
-  const [selectedAccount, setSelectedAccount] = useState('');
+  const [selectedAccount, setSelectedAccount] = useState('__manual__');
+  // allSaved: { [accountKey]: params } — one slot per account + manual
+  const [allSaved,        setAllSaved]        = useState({});
   const [params,          setParams]          = useState(DEFAULT_PARAMS);
   const [scrubIdx,        setScrubIdx]        = useState(0);
-  const [leftMode,        setLeftMode]        = useState('remaining'); // 'remaining' | 'total'
+  const [leftMode,        setLeftMode]        = useState('remaining');
   const [newMilestone,    setNewMilestone]    = useState('');
-  const [settled,         setSettled]         = useState(false); // settings loaded
+  const [settled,         setSettled]         = useState(false);
   const saveTimer = useRef(null);
   const rowRefs   = useRef({});
 
-  // Load persisted settings
+  // Load all saved slots from DB on mount
   useEffect(() => {
     getSettings()
-      .then(s => { if (s.compounder) setParams(p => ({ ...DEFAULT_PARAMS, ...s.compounder })); })
-      .catch(() => {})
+      .then(s => {
+        const saved = s.compounder_all || {};
+        setAllSaved(saved);
+        // Default to first account or manual
+        getAccounts().then(a => {
+          setAccounts(a);
+          const firstKey = a.length ? a[0].name : '__manual__';
+          setSelectedAccount(firstKey);
+          setParams({ ...DEFAULT_PARAMS, ...(saved[firstKey] || {}) });
+        }).catch(() => {});
+      })
+      .catch(() => setSettled(true))
       .finally(() => setSettled(true));
-    getAccounts().then(a => { setAccounts(a); if (a.length) setSelectedAccount(a[0].name); }).catch(() => {});
   }, []);
 
-  // Auto-fill start balance from account
+  // When switching accounts: restore that slot's params, auto-fill balance if account
   useEffect(() => {
-    if (!selectedAccount) return;
-    getDashboardStats({ account: selectedAccount })
-      .then(s => { if (s.current_balance != null) set('startBal', Math.round(s.current_balance)); })
-      .catch(() => {});
-  }, [selectedAccount]);
+    if (!settled) return;
+    const saved = allSaved[selectedAccount];
+    if (saved) {
+      setParams({ ...DEFAULT_PARAMS, ...saved });
+      setScrubIdx(0);
+    } else if (selectedAccount !== '__manual__') {
+      // New account — auto-fill balance, keep other defaults
+      getDashboardStats({ account: selectedAccount })
+        .then(s => {
+          const base = { ...DEFAULT_PARAMS, ...(allSaved[selectedAccount] || {}) };
+          if (s.current_balance != null) base.startBal = Math.round(s.current_balance);
+          setParams(base);
+          setScrubIdx(0);
+        })
+        .catch(() => { setParams({ ...DEFAULT_PARAMS }); setScrubIdx(0); });
+    } else {
+      setParams({ ...DEFAULT_PARAMS, ...(allSaved['__manual__'] || {}) });
+      setScrubIdx(0);
+    }
+  }, [selectedAccount, settled]);
 
-  // Persist after changes (debounced)
+  // Persist current account's params (debounced)
   useEffect(() => {
     if (!settled) return;
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => updateSettings({ compounder: params }).catch(() => {}), 800);
-  }, [params, settled]);
+    saveTimer.current = setTimeout(() => {
+      const next = { ...allSaved, [selectedAccount]: params };
+      setAllSaved(next);
+      updateSettings({ compounder_all: next }).catch(() => {});
+    }, 800);
+  }, [params, settled, selectedAccount]);
 
-  // Reset scrub when trades list changes length significantly
-  const prevLen = useRef(0);
   const trades = generateTrades(params.startBal, params.targetBal, params.riskPct, params.rrRatio, params.winRate, params.mode);
-  if (Math.abs(trades.length - prevLen.current) > 5) { prevLen.current = trades.length; }
-
   const set = (k, v) => setParams(p => ({ ...p, [k]: v }));
   const maxIdx     = Math.max(0, trades.length - 1);
   const safeIdx    = Math.min(scrubIdx, maxIdx);
@@ -138,7 +164,7 @@ export default function RewardManagementPage() {
           {/* Account picker */}
           <select value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)}
             className="input-field text-xs py-1.5">
-            <option value="">Manual</option>
+            <option value="__manual__">Manual</option>
             {accounts.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
           </select>
           {/* Mode toggle */}
