@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { getAccounts, getDashboardStats, getStartingBalance } from '../lib/api';
+import RewardManagementPage from './RewardManagementPage';
 
 const NUM_SLOTS = 6;
 const LS_ACCOUNTS = 'rr_slot_accounts'; // localStorage key for selected accounts
@@ -145,6 +146,7 @@ function AccountSlot({ index, accounts, riskPct, ceiling }) {
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function RiskManagementPage() {
+  const [activeTab, setActiveTab] = useState('risk'); // 'risk' | 'reward'
   const [balance,  setBalance]  = useState('');
   const [riskPct,  setRiskPct]  = useState('3');
   const [copied,   setCopied]   = useState(false);
@@ -186,9 +188,29 @@ export default function RiskManagementPage() {
   return (
     <div className="p-6 space-y-6">
 
-      <h1 className="text-lg font-mono font-semibold text-terminal-text">Risk Management</h1>
+      {/* ── Tab bar ──────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-0 border-b border-terminal-border">
+        {[
+          { key: 'risk',   label: 'Risk Management'   },
+          { key: 'reward', label: 'Reward Management'  },
+        ].map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            className={`px-5 py-2.5 text-sm font-mono font-semibold border-b-2 -mb-px transition-colors ${
+              activeTab === tab.key
+                ? 'border-blue-400 text-blue-400'
+                : 'border-transparent text-terminal-dim hover:text-terminal-text'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-      <div className="flex gap-6 items-start">
+      {/* ── Reward tab ───────────────────────────────────────────────────── */}
+      {activeTab === 'reward' && <RewardManagementPage />}
+
+      {/* ── Risk tab ─────────────────────────────────────────────────────── */}
+      {activeTab === 'risk' && <div className="flex gap-6 items-start">
 
         {/* ── Left: RR Calculator ──────────────────────────────────────── */}
         <div className="w-64 flex-shrink-0 space-y-4">
@@ -283,7 +305,8 @@ export default function RiskManagementPage() {
           </div>
         </div>
 
-      </div>
+      </div>}
+
     </div>
   );
 }

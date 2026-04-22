@@ -28,7 +28,7 @@ const nav = [
   { to: '/alchemy-calendar', label: 'Alchemy Calendar', icon: FlaskConical },
   { to: '/key-setups', label: 'Key Setups', icon: Layers },
   { to: '/key-lessons', label: 'Key Lessons', icon: BookMarked, activeColor: 'text-terminal-red border-terminal-red' },
-  { to: '/risk', label: 'Risk Management', icon: ShieldCheck, activeColor: 'text-blue-400 border-blue-400' },
+  { to: '/risk', label: 'Risk & Reward', icon: ShieldCheck, activeColor: 'text-blue-400 border-blue-400' },
   { to: '/import', label: 'Import', icon: FileUp },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
