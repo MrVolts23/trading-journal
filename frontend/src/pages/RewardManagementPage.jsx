@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { getAccounts, getDashboardStats, getSettings, updateSettings } from '../lib/api';
+import { getAccounts, getDashboardStats, getSettings, updateSettings, getTrades } from '../lib/api';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function fmt(n) {
@@ -18,32 +18,33 @@ function fmtFull(n) {
 }
 
 // ── Trade generation ───────────────────────────────────────────────────────────
-function generateTrades(startBal, targetBal, riskPct, rrRatio, winRate, mode) {
+function generateTrades(startBal, targetBal, riskPct, rrRatio, winRate, avgLossR, mode) {
   if (!startBal || !targetBal || startBal <= 0 || targetBal <= startBal) return [];
   const MAX = 5000;
-  const r  = riskPct / 100;
-  const wr = winRate / 100;
+  const r   = riskPct / 100;
+  const wr  = winRate / 100;
+  const lossR = Math.max(0.1, avgLossR || 1); // how many R a loss costs
   const trades = [];
   let bal = startBal;
 
   if (mode === 'ev') {
-    // Expected value per trade as fraction of balance
-    const evFrac = wr * r * rrRatio - (1 - wr) * r;
+    // Expected value: wins gain (riskPct × RR), losses cost (riskPct × avgLossR)
+    const evFrac = wr * r * rrRatio - (1 - wr) * r * lossR;
     if (evFrac <= 0) return [];
     for (let i = 0; i < MAX && bal < targetBal; i++) {
-      const before   = bal;
-      const riskAmt  = before * r;
-      const change   = before * evFrac;
+      const before  = bal;
+      const riskAmt = before * r;
+      const change  = before * evFrac;
       bal = before + change;
       trades.push({ n: i + 1, before, riskAmt, change, after: Math.min(bal, targetBal), isWin: null });
     }
   } else {
-    // Simulated — deterministic Bresenham-style win distribution
+    // Simulated — deterministic Bresenham-style win/loss distribution
     for (let i = 0; i < MAX && bal > 0 && bal < targetBal; i++) {
       const before  = bal;
       const riskAmt = before * r;
       const isWin   = Math.floor((i + 1) * wr) > Math.floor(i * wr);
-      const change  = isWin ? riskAmt * rrRatio : -riskAmt;
+      const change  = isWin ? riskAmt * rrRatio : -(riskAmt * lossR);
       bal = before + change;
       trades.push({ n: i + 1, before, riskAmt, change, after: bal, isWin });
     }
@@ -54,21 +55,22 @@ function generateTrades(startBal, targetBal, riskPct, rrRatio, winRate, mode) {
 const DEFAULT_MILESTONES = [1000, 5000, 10000, 25000, 50000, 75000, 100000];
 const DEFAULT_PARAMS = {
   startBal: 10000, targetBal: 100000,
-  riskPct: 5, rrRatio: 1, winRate: 60,
+  riskPct: 5, rrRatio: 1, winRate: 60, avgLossR: 1,
   mode: 'ev', milestones: DEFAULT_MILESTONES,
 };
 
 // ── Component ──────────────────────────────────────────────────────────────────
 export default function RewardManagementPage() {
-  const [accounts,        setAccounts]        = useState([]);
-  const [selectedAccount, setSelectedAccount] = useState('__manual__');
+  const [accounts,           setAccounts]           = useState([]);
+  const [selectedAccount,    setSelectedAccount]    = useState('__manual__');
   // allSaved: { [accountKey]: params } — one slot per account + manual
-  const [allSaved,        setAllSaved]        = useState({});
-  const [params,          setParams]          = useState(DEFAULT_PARAMS);
-  const [scrubIdx,        setScrubIdx]        = useState(0);
-  const [leftMode,        setLeftMode]        = useState('remaining');
-  const [newMilestone,    setNewMilestone]    = useState('');
-  const [settled,         setSettled]         = useState(false);
+  const [allSaved,           setAllSaved]           = useState({});
+  const [params,             setParams]             = useState(DEFAULT_PARAMS);
+  const [scrubIdx,           setScrubIdx]           = useState(0);
+  const [leftMode,           setLeftMode]           = useState('remaining');
+  const [newMilestone,       setNewMilestone]       = useState('');
+  const [settled,            setSettled]            = useState(false);
+  const [historicalAvgLossR, setHistoricalAvgLossR] = useState(null);
   const saveTimer = useRef(null);
   const rowRefs   = useRef({});
 
@@ -124,13 +126,30 @@ export default function RewardManagementPage() {
     }, 800);
   }, [params, settled, selectedAccount]);
 
-  const trades = generateTrades(params.startBal, params.targetBal, params.riskPct, params.rrRatio, params.winRate, params.mode);
+  // Fetch historical avg loss R for selected account
+  useEffect(() => {
+    if (!settled) return;
+    setHistoricalAvgLossR(null);
+    const acct = selectedAccount === '__manual__' ? undefined : selectedAccount;
+    getTrades({ account: acct, limit: 2000 })
+      .then(data => {
+        const rows = Array.isArray(data) ? data : (data?.trades ?? []);
+        const losses = rows.filter(t => t.pnl < 0 && t.r_multiple != null);
+        if (losses.length === 0) { setHistoricalAvgLossR(null); return; }
+        const avgR = losses.reduce((sum, t) => sum + Math.abs(t.r_multiple), 0) / losses.length;
+        setHistoricalAvgLossR(parseFloat(avgR.toFixed(2)));
+      })
+      .catch(() => setHistoricalAvgLossR(null));
+  }, [selectedAccount, settled]);
+
+  const trades = generateTrades(params.startBal, params.targetBal, params.riskPct, params.rrRatio, params.winRate, params.avgLossR, params.mode);
   const set = (k, v) => setParams(p => ({ ...p, [k]: v }));
   const maxIdx     = Math.max(0, trades.length - 1);
   const safeIdx    = Math.min(scrubIdx, maxIdx);
   const current    = trades[safeIdx] || null;
   const progress   = current ? Math.max(0, Math.min(100, ((current.after - params.startBal) / (params.targetBal - params.startBal)) * 100)) : 0;
-  const negEV      = params.mode === 'ev' && ((params.winRate / 100) * (params.riskPct / 100) * params.rrRatio - (1 - params.winRate / 100) * (params.riskPct / 100)) <= 0;
+  const lossR      = Math.max(0.1, params.avgLossR || 1);
+  const negEV      = params.mode === 'ev' && ((params.winRate / 100) * (params.riskPct / 100) * params.rrRatio - (1 - params.winRate / 100) * (params.riskPct / 100) * lossR) <= 0;
   const tradesLeft = leftMode === 'remaining' ? trades.length - safeIdx - 1 : trades.length;
 
   // Scroll selected row into view
@@ -258,6 +277,35 @@ export default function RewardManagementPage() {
               {negEV && (
                 <div className="text-[10px] font-mono text-red-400 pt-0.5">
                   ⚠ Negative expectancy — raise win rate or R:R ratio
+                </div>
+              )}
+            </div>
+
+            {/* Avg Loss R */}
+            <div className="space-y-1">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-mono text-terminal-muted">Avg Loss (R)</label>
+                <div className="flex items-center gap-1">
+                  <input type="number" min={0.1} max={3} step={0.1} value={params.avgLossR ?? 1}
+                    onChange={e => set('avgLossR', Math.min(3, Math.max(0.1, parseFloat(e.target.value) || 1)))}
+                    className="input-field text-xs py-1 w-14 text-right font-mono" />
+                  <span className="text-xs font-mono text-terminal-muted">R</span>
+                </div>
+              </div>
+              <input type="range" min={0.1} max={3} step={0.1} value={params.avgLossR ?? 1}
+                onChange={e => set('avgLossR', parseFloat(e.target.value))}
+                className="w-full accent-red-400 h-1" />
+              {historicalAvgLossR != null && (
+                <div className="flex items-center justify-between pt-0.5">
+                  <span className="text-[10px] font-mono text-terminal-dim">
+                    Historical avg: <span className="text-terminal-amber">{historicalAvgLossR}R</span>
+                  </span>
+                  <button
+                    onClick={() => set('avgLossR', historicalAvgLossR)}
+                    className="text-[10px] font-mono px-2 py-0.5 rounded border border-terminal-border text-terminal-dim hover:border-terminal-green hover:text-terminal-green transition-colors"
+                  >
+                    Auto-fill
+                  </button>
                 </div>
               )}
             </div>
