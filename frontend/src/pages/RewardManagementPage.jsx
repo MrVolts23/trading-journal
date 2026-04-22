@@ -285,14 +285,9 @@ export default function RewardManagementPage() {
             <div className="space-y-1">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-mono text-terminal-muted">Avg Loss (R)</label>
-                <div className="flex items-center gap-1">
-                  <input type="number" min={0.1} max={3} step={0.1} value={params.avgLossR ?? 1}
-                    onChange={e => set('avgLossR', Math.min(3, Math.max(0.1, parseFloat(e.target.value) || 1)))}
-                    className="input-field text-xs py-1 w-14 text-right font-mono" />
-                  <span className="text-xs font-mono text-terminal-muted">R</span>
-                </div>
+                <span className="text-xs font-mono font-bold text-red-400">{params.avgLossR ?? 1}R</span>
               </div>
-              <input type="range" min={0.1} max={3} step={0.1} value={params.avgLossR ?? 1}
+              <input type="range" min={0.5} max={3} step={0.5} value={params.avgLossR ?? 1}
                 onChange={e => set('avgLossR', parseFloat(e.target.value))}
                 className="w-full accent-red-400 h-1" />
               {historicalAvgLossR != null && (
