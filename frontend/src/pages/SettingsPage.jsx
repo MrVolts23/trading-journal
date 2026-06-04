@@ -309,8 +309,10 @@ function NewsCurrenciesCard() {
 // ── Check for Updates Card ─────────────────────────────────────────────────
 function CheckForUpdatesCard() {
   const isElectron = !!window.electronAPI;
-  const [status, setStatus] = useState('idle'); // idle | checking | up-to-date | update-available | downloaded
+  const [status, setStatus] = useState('idle'); // idle | checking | up-to-date | update-available | downloading | downloaded | error
   const [version, setVersion] = useState('');
+  const [progress, setProgress] = useState(null); // { percent, transferred, total, bytesPerSecond }
+  const [errorMsg, setErrorMsg] = useState('');
   const listenersAdded = useRef(false);
 
   useEffect(() => {
@@ -318,11 +320,14 @@ function CheckForUpdatesCard() {
     listenersAdded.current = true;
     window.electronAPI.onUpdateAvailable((v)    => { setVersion(v); setStatus('update-available'); });
     window.electronAPI.onUpdateNotAvailable(()  => setStatus('up-to-date'));
-    window.electronAPI.onUpdateDownloaded(()    => setStatus('downloaded'));
+    window.electronAPI.onDownloadProgress((p)   => { setProgress(p); setStatus('downloading'); });
+    window.electronAPI.onUpdateDownloaded(()    => { setStatus('downloaded'); setProgress(null); });
+    window.electronAPI.onUpdateError((msg)      => { setErrorMsg(msg || 'Update failed'); setStatus('error'); });
   }, [isElectron]);
 
   const check = () => {
     setStatus('checking');
+    setErrorMsg('');
     window.electronAPI.checkForUpdates();
     // Fall back to "up-to-date" after 10 s if no response (e.g. offline)
     setTimeout(() => setStatus(s => s === 'checking' ? 'up-to-date' : s), 10000);
@@ -330,13 +335,19 @@ function CheckForUpdatesCard() {
 
   if (!isElectron) return null; // hide in browser/dev mode
 
+  const fmtMB = (b) => `${((b || 0) / 1048576).toFixed(1)} MB`;
+  const pct = progress ? Math.round(progress.percent) : 0;
+
   const statusText = {
     idle:             '',
     checking:         'Checking…',
     'up-to-date':     '✓ You\'re on the latest version',
-    'update-available': `⬇ v${version} is downloading in the background…`,
+    'update-available': `⬇ v${version} found — starting download…`,
     downloaded:       '✅ Update downloaded — restart the app to apply it',
+    error:            `⚠ Update failed: ${errorMsg}`,
   }[status];
+
+  const showBar = status === 'downloading' && progress;
 
   return (
     <div className="card p-5 space-y-3">
@@ -347,18 +358,41 @@ function CheckForUpdatesCard() {
       <div className="flex items-center gap-3">
         <button
           onClick={check}
-          disabled={status === 'checking'}
+          disabled={status === 'checking' || status === 'downloading'}
           className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs disabled:opacity-40"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${status === 'checking' ? 'animate-spin' : ''}`} />
           Check for Updates
         </button>
-        {statusText && (
-          <span className={`text-xs font-mono ${status === 'downloaded' ? 'text-green-400' : status === 'update-available' ? 'text-amber-400' : 'text-terminal-dim'}`}>
+        {!showBar && statusText && (
+          <span className={`text-xs font-mono ${
+            status === 'downloaded' ? 'text-green-400'
+            : status === 'error' ? 'text-terminal-red'
+            : status === 'update-available' ? 'text-amber-400'
+            : 'text-terminal-dim'
+          }`}>
             {statusText}
           </span>
         )}
       </div>
+
+      {showBar && (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-mono">
+            <span className="text-amber-400">⬇ Downloading v{version}…</span>
+            <span className="text-terminal-dim">
+              {pct}% · {fmtMB(progress.transferred)} / {fmtMB(progress.total)}
+              {progress.bytesPerSecond ? ` · ${fmtMB(progress.bytesPerSecond)}/s` : ''}
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-terminal-border overflow-hidden">
+            <div
+              className="h-full bg-terminal-green transition-[width] duration-200 ease-out"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
