@@ -69,7 +69,8 @@
     "publish": {
       "provider": "github",
       "owner": "MrVolts23",
-      "repo": "trading-journal"
+      "repo": "trading-journal",
+      "releaseType": "release"
     },
     "npmRebuild": true
   }

@@ -27,4 +27,9 @@ git push origin main
 echo "==> Building + publishing release to GitHub…"
 npm run electron:publish
 
+# Safety net: electron-builder can still create the GitHub release as a DRAFT,
+# which electron-updater cannot see. Force it published so the app detects it.
+echo "==> Ensuring v$NEW_VERSION is published (not a draft)…"
+gh release edit "v$NEW_VERSION" --draft=false 2>/dev/null && echo "    published" || echo "    (already published)"
+
 echo "==> Done. v$NEW_VERSION is live — the app will auto-update on next launch."
