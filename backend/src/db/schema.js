@@ -175,6 +175,31 @@ CREATE TABLE IF NOT EXISTS metadrift_entries (
 );
 
 CREATE INDEX IF NOT EXISTS idx_metadrift_date ON metadrift_entries(date);
+
+-- Daily Setup — per (symbol, day) backtest sheet: 3 charts, checklist, outcome, notes.
+-- Fully separate from real trade stats. Never feeds Dashboard / Trade Log.
+CREATE TABLE IF NOT EXISTS daily_setup_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  symbol TEXT NOT NULL,
+  trade_date TEXT NOT NULL,
+  chart1 TEXT,                      -- base64 data URL
+  chart2 TEXT,                      -- base64 data URL
+  chart3 TEXT,                      -- base64 data URL
+  check1 INTEGER DEFAULT 0,         -- 0/1 toggle
+  check2 INTEGER DEFAULT 0,
+  check3 INTEGER DEFAULT 0,
+  outcome TEXT,                     -- 'win' | 'loss' | null
+  r_value REAL,                     -- magnitude of R (sign comes from outcome)
+  balance_used REAL,                -- account balance snapshot at save time
+  risk_pct REAL,                    -- % of balance per 1R at save time
+  dollar_value REAL,                -- computed $ result snapshot
+  notes TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(symbol, trade_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_setup_symbol_date ON daily_setup_entries(symbol, trade_date);
 `;
 
 module.exports = SCHEMA;

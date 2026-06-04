@@ -106,6 +106,12 @@ function seedDefaults(db) {
     ['synology_path', ''],
     ['strategies', JSON.stringify(['ASIA Scalp', 'ASIA Check Six', 'Asia Flag', 'NY DUMBNESS'])],
     ['markets', JSON.stringify(['METAL', 'FOREX'])],
+    // Daily Setup config (INSERT OR IGNORE — never overwrites once the user edits these)
+    ['daily_setup_symbols', JSON.stringify(['Gold', 'NQ'])],
+    ['daily_setup_checklist', JSON.stringify(['Checklist 1', 'Checklist 2', 'Checklist 3'])],
+    ['daily_setup_chart_labels', JSON.stringify(['Chart 1', 'Chart 2', 'Chart 3'])],
+    ['daily_setup_risk_pct', '1'],
+    ['daily_setup_balance', ''],
   ];
   const upsert = db.prepare(`
     INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)

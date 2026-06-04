@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout/Layout';
 import DashboardPage from './pages/DashboardPage';
 import TradeLogPage from './pages/TradeLogPage';
@@ -13,7 +13,7 @@ import TradeJournalPage from './pages/TradeJournalPage';
 import KeySetupsPage from './pages/KeySetupsPage';
 import KeyLessonsPage from './pages/KeyLessonsPage';
 import RiskManagementPage from './pages/RiskManagementPage';
-import MetaDriftPage from './pages/MetaDriftPage';
+import TradeBacktestPage from './pages/TradeBacktestPage';
 
 export default function App() {
   // Restore saved theme on first load
@@ -37,7 +37,8 @@ export default function App() {
           <Route path="/key-setups" element={<KeySetupsPage />} />
           <Route path="/key-lessons" element={<KeyLessonsPage />} />
           <Route path="/risk" element={<RiskManagementPage />} />
-          <Route path="/metadrift" element={<MetaDriftPage />} />
+          <Route path="/trade-backtest" element={<TradeBacktestPage />} />
+          <Route path="/metadrift" element={<Navigate to="/trade-backtest" replace />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

@@ -22,7 +22,7 @@ const nav = [
   { to: '/trades', label: 'Trade Log', icon: TableProperties },
   { to: '/journal', label: 'Trade Journal', icon: BookOpen },
   { to: '/calendar', label: 'Calendar', icon: Calendar },
-  { to: '/metadrift', label: 'MetaDrift', icon: GitCompare, activeColor: 'text-purple-400 border-purple-400' },
+  { to: '/trade-backtest', label: 'Trade & Backtest', icon: GitCompare, activeColor: 'text-purple-400 border-purple-400' },
   { to: '/withdrawal-plan', label: 'Withdrawal Plan', icon: PiggyBank },
   { to: '/alchemy', label: 'Alchemy', icon: FlaskConical },
   { to: '/alchemy-calendar', label: 'Alchemy Calendar', icon: FlaskConical },

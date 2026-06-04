@@ -22,6 +22,7 @@ const keySetupsRouter      = require('./routes/keySetups');
 const keyLessonsRouter     = require('./routes/keyLessons');
 const mistakeTypesRouter   = require('./routes/mistakeTypes');
 const metadriftRouter      = require('./routes/metadrift');
+const dailySetupRouter     = require('./routes/dailySetup');
 const newsRouter           = require('./routes/news');
 
 const app = express();
@@ -51,6 +52,7 @@ app.use('/api/key-setups',      keySetupsRouter);
 app.use('/api/key-lessons',     keyLessonsRouter);
 app.use('/api/mistake-types',   mistakeTypesRouter);
 app.use('/api/metadrift',       metadriftRouter);
+app.use('/api/daily-setup',     dailySetupRouter);
 app.use('/api/news',           newsRouter);
 
 // Health check

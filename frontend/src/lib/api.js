@@ -29,6 +29,11 @@ export const getMetaDriftCalendar  = (params) => api.get('/metadrift/calendar', 
 export const saveMetaDriftEntry    = (data)   => api.post('/metadrift/entry', data).then(r => r.data);
 export const deleteMetaDriftEntry  = (date, account) => api.delete(`/metadrift/entry/${date}`, { params: { account } }).then(r => r.data);
 
+// Daily Setup (per symbol + day backtest sheet — separate from real stats)
+export const getDailySetup  = (symbol, date) => api.get('/daily-setup', { params: { symbol, date } }).then(r => r.data);
+export const saveDailySetup = (data)         => api.put('/daily-setup', data).then(r => r.data);
+export const deleteDailySetup = (symbol, date) => api.delete('/daily-setup', { params: { symbol, date } }).then(r => r.data);
+
 // Accounts
 export const getAccounts = () => api.get('/accounts').then(r => r.data);
 export const deleteAccount = (id) => api.delete(`/accounts/${id}`).then(r => r.data);
