@@ -87,6 +87,16 @@ router.get('/starting-balance', (req, res) => {
     ? db.prepare(`SELECT date, SUM(amount) AS amount FROM account_activity WHERE activity_type = 'deposit' AND date > ? GROUP BY date ORDER BY date`).all(startDate)
     : [];
 
+  // Real broker withdrawals + corrections by date — so the plan's weekly walk can apply
+  // them and the actual carry-forward reconciles to the real current balance.
+  // (withdrawal amounts are stored negative; corrections are signed.)
+  const withdrawalEvents = db.prepare(
+    `SELECT date, SUM(amount) AS amount FROM account_activity WHERE activity_type = 'withdrawal' GROUP BY date ORDER BY date`
+  ).all();
+  const correctionEvents = db.prepare(
+    `SELECT date, SUM(amount) AS amount FROM account_activity WHERE activity_type = 'correction' GROUP BY date ORDER BY date`
+  ).all();
+
   // Net P&L from all closed trades
   const pnlRow = db.prepare(`SELECT COALESCE(SUM(pnl), 0) AS net_pnl FROM trades WHERE pnl IS NOT NULL`).get();
 
@@ -117,6 +127,8 @@ router.get('/starting-balance', (req, res) => {
     net_pnl:             netPnl,
     current_balance:     currentBalance,
     mid_plan_deposits:   midPlanDeposits,
+    withdrawal_events:   withdrawalEvents,   // [{date, amount(negative)}]
+    correction_events:   correctionEvents,   // [{date, amount(signed)}]
   });
 });
 

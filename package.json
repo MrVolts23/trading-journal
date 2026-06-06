@@ -1,6 +1,6 @@
 {
   "name": "mikes-trading-journal",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "Mike's Trading Journal — desktop app",
   "main": "electron/main.js",
   "scripts": {
@@ -52,15 +52,13 @@
         {
           "target": "dmg",
           "arch": [
-            "arm64",
-            "x64"
+            "arm64"
           ]
         },
         {
           "target": "zip",
           "arch": [
-            "arm64",
-            "x64"
+            "arm64"
           ]
         }
       ]

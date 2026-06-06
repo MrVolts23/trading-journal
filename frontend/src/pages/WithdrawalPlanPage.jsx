@@ -53,7 +53,7 @@ const DEFAULT_SETTINGS = {
 };
 
 // ── Generate 52 weeks ─────────────────────────────────────────────────────────
-function generateWeeks(settings, weeklyPnlData, midPlanDeposits = [], actualsMap = {}) {
+function generateWeeks(settings, weeklyPnlData, midPlanDeposits = [], actualsMap = {}, withdrawalEvents = [], correctionEvents = []) {
   const {
     startingBalance    = 22000,
     withdrawalPct      = 25,
@@ -76,6 +76,12 @@ function generateWeeks(settings, weeklyPnlData, midPlanDeposits = [], actualsMap
   const depositsByDate = {};
   (midPlanDeposits || []).forEach(r => { depositsByDate[r.date] = (depositsByDate[r.date] || 0) + r.amount; });
 
+  // Index real broker withdrawals (stored negative → take abs) and corrections (signed)
+  const withdrawalsByDate = {};
+  (withdrawalEvents || []).forEach(r => { withdrawalsByDate[r.date] = (withdrawalsByDate[r.date] || 0) + Math.abs(r.amount); });
+  const correctionsByDate = {};
+  (correctionEvents || []).forEach(r => { correctionsByDate[r.date] = (correctionsByDate[r.date] || 0) + r.amount; });
+
   const forecastBals = scenarios.map(() => startingBalance);
   let actualBal = startingBalance;
 
@@ -88,10 +94,12 @@ function generateWeeks(settings, weeklyPnlData, midPlanDeposits = [], actualsMap
     const weekEndStr   = fmtDate(weekEnd);
     const isPast = weekEnd < new Date();
 
-    // Sum any mid-plan deposits that fall within this week (Mon–Fri)
-    const depositThisWeek = Object.entries(depositsByDate)
-      .filter(([d]) => d >= weekStartStr && d <= weekEndStr)
-      .reduce((s, [, amt]) => s + amt, 0);
+    // Bucket cash events into this calendar week (Mon–Sun, so weekend events aren't lost)
+    const weekFullEndStr = fmtDate(addDays(weekStart, 6));
+    const inWeek = (d) => d >= weekStartStr && d <= weekFullEndStr;
+    const depositThisWeek    = Object.entries(depositsByDate).filter(([d]) => inWeek(d)).reduce((s, [, amt]) => s + amt, 0);
+    const withdrawalThisWeek = Object.entries(withdrawalsByDate).filter(([d]) => inWeek(d)).reduce((s, [, amt]) => s + amt, 0); // positive $ pulled out
+    const correctionThisWeek = Object.entries(correctionsByDate).filter(([d]) => inWeek(d)).reduce((s, [, amt]) => s + amt, 0); // signed
 
     // Fuzzy-match trades to this week (±3 days to handle SQLite week boundaries)
     let actualRow = pnlByDate[weekStartStr];
@@ -105,41 +113,34 @@ function generateWeeks(settings, weeklyPnlData, midPlanDeposits = [], actualsMap
     const weekNum     = i + 1;
     const actualPnl   = actualRow?.total_pnl ?? null;
     const actualOverride = actualsMap[weekNum]; // manual extraction override from DB
-
-    // Auto-calculate withdrawal: % of positive P&L weeks, only after withdrawal start date.
-    // If a manual override exists (withdrawal_taken saved), use that instead.
     const isWithdrawalActive = weekStart.getTime() >= withdrawalStartMs;
+
+    // Actual extraction = the REAL broker withdrawals that landed this week (CWBA),
+    // unless a manual override is set. Using real money pulled out (not an estimate)
+    // is what makes the actual carry-forward reconcile to the live Current Balance.
     let actualWithdrawal = 0;
-    if (actualOverride?.withdrawal_taken != null) {
-      // Manual override — use exactly what was saved
-      actualWithdrawal = actualOverride.withdrawal_taken;
-    } else if (isPast && actualPnl !== null && actualPnl > 0 && isWithdrawalActive) {
-      const projectedEnd = actualBal + actualPnl + depositThisWeek;
-      if (profitCeiling != null && projectedEnd > profitCeiling) {
-        actualWithdrawal = projectedEnd - profitCeiling;
-      } else {
-        actualWithdrawal = actualPnl * (withdrawalPct / 100);
-      }
-    }
+    if (actualOverride?.withdrawal_taken != null) actualWithdrawal = actualOverride.withdrawal_taken;
+    else actualWithdrawal = withdrawalThisWeek;
 
     const actualStartBal  = actualBal;
     const hasActualTrades = actualPnl !== null; // true only when real trade data exists
-    // Gross balance = balance BEFORE extraction (starting bal + P&L + deposits)
-    const actualGrossBal  = hasActualTrades ? actualBal + actualPnl + depositThisWeek : null;
-    let actualEndBal = null; // Net / carry-forward = gross minus extracted
-    if (actualPnl !== null) {
-      actualEndBal = actualGrossBal - actualWithdrawal;
-      actualBal = actualEndBal;
-    } else if (isPast) {
-      // Past week with no trades — carry the balance forward (plus any deposit)
-      // so the actual balance column shows a continuous line instead of blank dashes.
-      actualEndBal = actualBal + depositThisWeek;
-      if (depositThisWeek > 0) actualBal = actualEndBal;
+    // Walk the balance on every PAST week (and any week with trades) so P&L, deposits,
+    // corrections AND real withdrawals all land — clamped at 0. This reconciles the
+    // carry-forward to the real Current Balance by today instead of ignoring withdrawals.
+    let actualGrossBal = null; // balance BEFORE extraction
+    let actualEndBal   = null; // carry-forward = gross − extracted
+    if (isPast || hasActualTrades) {
+      actualGrossBal = Math.max(0, actualBal + (actualPnl || 0) + depositThisWeek + correctionThisWeek);
+      actualEndBal   = Math.max(0, actualGrossBal - actualWithdrawal);
+      actualBal      = actualEndBal;
     }
 
     // Forecast per scenario — dynamically rebased to actual each week where data exists
     const forecastScenarios = scenarios.map((s, si) => {
-      const startBal   = forecastBals[si];
+      // Clamp at 0 — a blown account can't compound back up, and a negative
+      // balance × a >1 growth multiplier spirals into ever-more-negative
+      // projected balances (the "negative future balances" bug).
+      const startBal   = Math.max(0, forecastBals[si]);
       const multiplier = Math.pow(1 + s.dailyPct / 100, 5);
       const endBal     = startBal * multiplier;
       const growth     = endBal - startBal;
@@ -161,11 +162,12 @@ function generateWeeks(settings, weeklyPnlData, midPlanDeposits = [], actualsMap
       return { startBal, endBal, growth, withdrawal, nextStart, aboveCeiling };
     });
 
-    // Dynamic rebase: only rebase on COMPLETED weeks (isPast).
-    // The current week may have partial trades but isn't done — rebasing off it
-    // would distort all future projections with incomplete data.
-    if (isPast && (hasActualTrades || (depositThisWeek > 0 && actualEndBal !== null))) {
-      forecastBals.forEach((_, si) => { forecastBals[si] = actualEndBal; });
+    // Dynamic rebase: rebase to the real actual balance on EVERY completed (past) week —
+    // including no-trade weeks. Keeps the projection anchored to reality and stops it
+    // running away while you're not trading; future weeks compound from today's balance.
+    // The current week (not yet past) is never rebased, so partial data doesn't distort it.
+    if (isPast && actualEndBal !== null) {
+      forecastBals.forEach((_, si) => { forecastBals[si] = Math.max(0, actualEndBal); });
     }
 
     weeks.push({
@@ -225,7 +227,7 @@ function buildWeeklyPnlData(weeks, activeScenario) {
 function buildExtractionData(weeks, activeScenario) {
   return weeks.map(w => ({
     name:      `W${w.weekNum}`,
-    actual:    (w.isPast && w.hasActualTrades) ? Math.round(w.actualWithdrawal || 0) : null,
+    actual:    w.isPast ? Math.round(w.actualWithdrawal || 0) : null,
     projected: Math.round(w.forecast?.[activeScenario]?.withdrawal ?? 0),
   }));
 }
@@ -298,7 +300,8 @@ export default function WithdrawalPlanPage() {
   // Use DRAFT so scenario/% changes are live without needing Apply
   const weeks = loaded ? generateWeeks(
     { ...draft, startingBalance: resolvedStartingBalance },
-    weeklyPnl, midPlanDeposits, actualsMap
+    weeklyPnl, midPlanDeposits, actualsMap,
+    realBalance?.withdrawal_events || [], realBalance?.correction_events || []
   ) : [];
 
 
@@ -674,8 +677,8 @@ export default function WithdrawalPlanPage() {
                               </span>
                             ) : (
                               <span className="flex items-center justify-end gap-1 group">
-                                <span>{w.hasActualTrades && w.actualWithdrawal > 0 ? fmtMoney(w.actualWithdrawal) : <span className="text-terminal-dim">—</span>}</span>
-                                {w.hasActualTrades && (
+                                <span>{w.actualWithdrawal > 0 ? fmtMoney(w.actualWithdrawal) : <span className="text-terminal-dim">—</span>}</span>
+                                {w.isPast && (
                                   <span className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button title="Edit extracted amount"
                                       onClick={() => setEditingExtracted({ weekNum: w.weekNum, value: w.actualWithdrawal || 0 })}
