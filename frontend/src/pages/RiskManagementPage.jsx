@@ -7,6 +7,8 @@ const NUM_SLOTS = 6;
 const LS_ACCOUNTS = 'rr_slot_accounts'; // localStorage key for selected accounts
 const LS_BANKS    = 'rr_slot_banks';    // localStorage key for bank reserve amounts
 const LS_CEILING  = 'rr_slot_ceiling';  // localStorage key for per-slot ceiling
+const LS_RISK     = 'rr_risk_pct';      // persisted risk % — survives tab switches
+const LS_BALANCE  = 'rr_balance';       // persisted account size — survives tab switches
 
 function loadLS(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
@@ -287,26 +289,30 @@ function SessionTracker({ balance, riskPct }) {
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function RiskManagementPage() {
   const [activeTab, setActiveTab] = useState('risk'); // 'risk' | 'reward'
-  const [balance,  setBalance]  = useState('');
-  const [riskPct,  setRiskPct]  = useState('3');
+  const [balance,     setBalance]     = useState(() => loadLS(LS_BALANCE, ''));
+  const [riskPct,     setRiskPct]     = useState(() => loadLS(LS_RISK, '3'));
+  const [liveBalance, setLiveBalance] = useState(null);
   const [copied,   setCopied]   = useState(false);
   const [accounts, setAccounts] = useState([]);
   const [ceiling,  setCeiling]  = useState(() => loadLS(LS_CEILING, '250000'));
 
   useEffect(() => {
     getAccounts().then(setAccounts).catch(() => {});
-    // Pre-fill balance with live broker balance (deposits + P&L + withdrawals)
+    // Fetch the live broker balance. Only pre-fill the account size with it if the
+    // user hasn't already set/saved one — otherwise their manual value persists.
     getStartingBalance().then(bal => {
       if (bal?.current_balance) {
-        setBalance(String(Math.round(bal.current_balance)));
+        const live = String(Math.round(bal.current_balance));
+        setLiveBalance(live);
+        if (!loadLS(LS_BALANCE, '')) setBalance(live);
       }
     }).catch(() => {});
   }, []);
 
-  // Persist ceiling
-  useEffect(() => {
-    localStorage.setItem(LS_CEILING, JSON.stringify(ceiling));
-  }, [ceiling]);
+  // Persist ceiling, risk %, and account size so they survive leaving the tab
+  useEffect(() => { localStorage.setItem(LS_CEILING, JSON.stringify(ceiling)); }, [ceiling]);
+  useEffect(() => { localStorage.setItem(LS_RISK,    JSON.stringify(riskPct)); }, [riskPct]);
+  useEffect(() => { localStorage.setItem(LS_BALANCE, JSON.stringify(balance)); }, [balance]);
 
   const bal  = Math.max(0, parseFloat(balance) || 0);
   const risk = Math.max(0, parseFloat(riskPct) || 0);
@@ -357,7 +363,7 @@ export default function RiskManagementPage() {
         <div className="card p-4 flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <span className="stat-label">Account Size</span>
-            {balance && <span className="text-[9px] text-terminal-green font-semibold tracking-wide">● LIVE</span>}
+            {balance && balance === liveBalance && <span className="text-[9px] text-terminal-green font-semibold tracking-wide">● LIVE</span>}
           </div>
           <div className="relative w-48">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm font-mono text-terminal-muted">$</span>
