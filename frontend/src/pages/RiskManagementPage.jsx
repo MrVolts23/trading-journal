@@ -170,6 +170,10 @@ function SessionTracker({ balance, riskPct }) {
   const sessionDollar  = running - B0;
   const sessionR       = rows.reduce((s, x) => s + x.r, 0);
   const currentBalance = running;
+  const wins    = rows.filter(r => r.amt > 0).length;
+  const losses  = rows.filter(r => r.amt < 0).length;
+  const decided = wins + losses; // breakeven trades (amt === 0) excluded from win rate
+  const winRate = decided > 0 ? (wins / decided) * 100 : 0;
 
   const addTrade = () => {
     const v = parseFloat(input);
@@ -193,7 +197,7 @@ function SessionTracker({ balance, riskPct }) {
       </div>
 
       {/* Summary — derived from RR Calculator balance + manual entries */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="card p-4">
           <div className="stat-label mb-1">Session P&amp;L</div>
           <div className={`text-2xl font-mono font-bold ${posNeg(sessionDollar)}`}>{fmtUSD(sessionDollar)}</div>
@@ -203,6 +207,19 @@ function SessionTracker({ balance, riskPct }) {
           <div className="stat-label mb-1">Session R</div>
           <div className={`text-2xl font-mono font-bold ${posNeg(sessionR)}`}>{fmtR(sessionR)}</div>
           <div className="text-[10px] font-mono text-terminal-dim mt-0.5">net R booked</div>
+        </div>
+        <div className="card p-4">
+          <div className="stat-label mb-1">Win / Loss</div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="space-y-0.5 font-mono text-sm">
+              <div><span className="text-terminal-dim">W=</span> <span className="text-terminal-green font-bold">{wins}</span></div>
+              <div><span className="text-terminal-dim">L=</span> <span className="text-terminal-red font-bold">{losses}</span></div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-mono font-bold text-terminal-text">{decided > 0 ? `${winRate.toFixed(0)}%` : '—'}</div>
+              <div className="text-[10px] font-mono text-terminal-dim">win rate</div>
+            </div>
+          </div>
         </div>
         <div className="card p-4 border border-terminal-amber/30">
           <div className="stat-label mb-1">Current Balance</div>
