@@ -50,6 +50,7 @@ const DEFAULT_SETTINGS = {
   startDate:          '2026-01-27',
   withdrawalStartDate:'2026-04-06',
   scenarios:          DEFAULT_SCENARIOS,
+  scenarioBalance:    10000,  // custom starting balance used only in Scenario mode
 };
 
 // ── Generate 52 weeks ─────────────────────────────────────────────────────────
@@ -61,6 +62,8 @@ function generateWeeks(settings, weeklyPnlData, midPlanDeposits = [], actualsMap
     startDate,
     withdrawalStartDate = '2026-04-06',
     scenarios          = DEFAULT_SCENARIOS,
+    scenario           = false,  // Scenario mode: pure projection from a custom balance,
+                                  // no real-trade overlay and no rebasing to actual.
   } = settings;
 
   if (!startDate) return [];
@@ -101,12 +104,17 @@ function generateWeeks(settings, weeklyPnlData, midPlanDeposits = [], actualsMap
     const withdrawalThisWeek = Object.entries(withdrawalsByDate).filter(([d]) => inWeek(d)).reduce((s, [, amt]) => s + amt, 0); // positive $ pulled out
     const correctionThisWeek = Object.entries(correctionsByDate).filter(([d]) => inWeek(d)).reduce((s, [, amt]) => s + amt, 0); // signed
 
-    // Fuzzy-match trades to this week (±3 days to handle SQLite week boundaries)
-    let actualRow = pnlByDate[weekStartStr];
-    if (!actualRow) {
-      for (let d = -3; d <= 3; d++) {
-        const cand = fmtDate(addDays(weekStart, d));
-        if (pnlByDate[cand]) { actualRow = pnlByDate[cand]; break; }
+    // Fuzzy-match trades to this week (±3 days to handle SQLite week boundaries).
+    // Skipped entirely in Scenario mode — a scenario is a clean hypothetical with
+    // no real-trade overlay, so every "Actual" column stays blank.
+    let actualRow = null;
+    if (!scenario) {
+      actualRow = pnlByDate[weekStartStr];
+      if (!actualRow) {
+        for (let d = -3; d <= 3; d++) {
+          const cand = fmtDate(addDays(weekStart, d));
+          if (pnlByDate[cand]) { actualRow = pnlByDate[cand]; break; }
+        }
       }
     }
 
@@ -129,7 +137,7 @@ function generateWeeks(settings, weeklyPnlData, midPlanDeposits = [], actualsMap
     // carry-forward to the real Current Balance by today instead of ignoring withdrawals.
     let actualGrossBal = null; // balance BEFORE extraction
     let actualEndBal   = null; // carry-forward = gross − extracted
-    if (isPast || hasActualTrades) {
+    if (!scenario && (isPast || hasActualTrades)) {
       actualGrossBal = Math.max(0, actualBal + (actualPnl || 0) + depositThisWeek + correctionThisWeek);
       actualEndBal   = Math.max(0, actualGrossBal - actualWithdrawal);
       actualBal      = actualEndBal;
@@ -166,7 +174,7 @@ function generateWeeks(settings, weeklyPnlData, midPlanDeposits = [], actualsMap
     // including no-trade weeks. Keeps the projection anchored to reality and stops it
     // running away while you're not trading; future weeks compound from today's balance.
     // The current week (not yet past) is never rebased, so partial data doesn't distort it.
-    if (isPast && actualEndBal !== null) {
+    if (!scenario && isPast && actualEndBal !== null) {
       forecastBals.forEach((_, si) => { forecastBals[si] = Math.max(0, actualEndBal); });
     }
 
@@ -240,6 +248,7 @@ export default function WithdrawalPlanPage() {
   const [realBalance,     setRealBalance]    = useState(null);
   const [actualsMap,      setActualsMap]     = useState({});
   const [activeScenario,  setActiveScenario] = useState(1);
+  const [mode,            setMode]           = useState('live'); // 'live' | 'scenario'
   const [chartStart,      setChartStart]      = useState(1);
   const [chartEnd,        setChartEnd]        = useState(16);
   const [saving,          setSaving]         = useState(false);
@@ -297,9 +306,13 @@ export default function WithdrawalPlanPage() {
   const resolvedStartingBalance = realBalance?.total_deposits || 0;
   const midPlanDeposits         = realBalance?.mid_plan_deposits || [];
 
-  // Use DRAFT so scenario/% changes are live without needing Apply
+  // Use DRAFT so scenario/% changes are live without needing Apply.
+  // Scenario mode: pure projection from the custom balance, no real-trade overlay.
+  const isScenario = mode === 'scenario';
   const weeks = loaded ? generateWeeks(
-    { ...draft, startingBalance: resolvedStartingBalance },
+    isScenario
+      ? { ...draft, startingBalance: parseFloat(draft.scenarioBalance) || 0, scenario: true }
+      : { ...draft, startingBalance: resolvedStartingBalance },
     weeklyPnl, midPlanDeposits, actualsMap,
     realBalance?.withdrawal_events || [], realBalance?.correction_events || []
   ) : [];
@@ -320,6 +333,7 @@ export default function WithdrawalPlanPage() {
         startDate:           draft.startDate,
         withdrawalStartDate: draft.withdrawalStartDate,
         scenarios:           draft.scenarios,
+        scenarioBalance:     draft.scenarioBalance,
       });
       setSettings({ ...draft });
     } catch (e) { console.error(e); }
@@ -338,29 +352,54 @@ export default function WithdrawalPlanPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-full">
-      <div>
-        <h1 className="text-lg font-mono font-semibold text-terminal-text">Withdrawal Plan</h1>
-        <p className="text-xs font-mono text-terminal-muted mt-1">Forecast vs actual — compound growth tracker</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-lg font-mono font-semibold text-terminal-text">Withdrawal Plan</h1>
+          <p className="text-xs font-mono text-terminal-muted mt-1">
+            {isScenario ? 'Scenario — pure projection from a custom starting balance' : 'Forecast vs actual — compound growth tracker'}
+          </p>
+        </div>
+        {/* Live / Scenario mode toggle */}
+        <div className="flex items-center rounded border border-terminal-border overflow-hidden flex-shrink-0">
+          {[['live', 'Live'], ['scenario', 'Scenario']].map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setMode(key)}
+              className={`px-4 py-1.5 text-xs font-mono transition-colors ${
+                mode === key
+                  ? (key === 'scenario' ? 'bg-terminal-amber text-black font-semibold' : 'bg-terminal-green text-black font-semibold')
+                  : 'text-terminal-muted hover:text-terminal-text'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Key Stats ──────────────────────────────────────────────────────── */}
       {loaded && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="card p-4">
-            <div className="stat-label mb-1">Current Balance</div>
-            <div className="text-2xl font-mono font-bold text-terminal-text">{fmtMoney(currentActualBal)}</div>
+          <div className={`card p-4 ${isScenario ? 'border border-terminal-amber/40' : ''}`}>
+            <div className="stat-label mb-1">{isScenario ? 'Scenario Start' : 'Current Balance'}</div>
+            <div className="text-2xl font-mono font-bold" style={isScenario ? { color: 'rgb(var(--t-amber))' } : undefined}>
+              {fmtMoney(isScenario ? (parseFloat(draft.scenarioBalance) || 0) : currentActualBal)}
+            </div>
             <div className="text-[10px] font-mono text-terminal-muted mt-0.5">
-              started {fmtMoney(resolvedStartingBalance)}
-              {realBalance?.has_real_data && <span className="text-terminal-green ml-1">· live</span>}
+              {isScenario ? 'hypothetical starting capital' : <>started {fmtMoney(resolvedStartingBalance)}{realBalance?.has_real_data && <span className="text-terminal-green ml-1">· live</span>}</>}
             </div>
           </div>
-          <div className="card p-4 border border-terminal-green/30">
+          <div className={`card p-4 ${isScenario ? '' : 'border border-terminal-green/30'}`}>
             <div className="stat-label mb-1 flex items-center gap-1.5">
-              <PiggyBank className="w-3 h-3 text-terminal-green" />
-              Total Funds Extracted
+              <PiggyBank className={`w-3 h-3 ${isScenario ? 'text-terminal-dim' : 'text-terminal-green'}`} />
+              {isScenario ? 'Mode' : 'Total Funds Extracted'}
             </div>
-            <div className="text-2xl font-mono font-bold text-terminal-green">{fmtMoney(totalExtracted)}</div>
-            <div className="text-[10px] font-mono text-terminal-muted mt-0.5">Actual broker withdrawals (CWBA)</div>
+            <div className={`text-2xl font-mono font-bold ${isScenario ? 'text-terminal-amber' : 'text-terminal-green'}`}>
+              {isScenario ? 'Scenario' : fmtMoney(totalExtracted)}
+            </div>
+            <div className="text-[10px] font-mono text-terminal-muted mt-0.5">
+              {isScenario ? 'projection only — no real trades' : 'Actual broker withdrawals (CWBA)'}
+            </div>
           </div>
           <div className="card p-4">
             <div className="stat-label mb-1">Forecast End Balance</div>
@@ -411,6 +450,23 @@ export default function WithdrawalPlanPage() {
               {draft.profitCeiling ? '100% extracted above this' : 'No ceiling set'}
             </div>
           </div>
+          {isScenario && (
+            <div>
+              <label className="text-[10px] font-mono text-terminal-amber uppercase tracking-wide block mb-1">Scenario Start $</label>
+              <div className="flex items-center gap-1">
+                <span className="text-terminal-muted text-sm font-mono">$</span>
+                <input
+                  type="number"
+                  value={draft.scenarioBalance ?? ''}
+                  placeholder="10000"
+                  onFocus={e => e.target.select()}
+                  onChange={e => setDraft(d => ({ ...d, scenarioBalance: e.target.value ? parseFloat(e.target.value) : 0 }))}
+                  className="input-field text-sm w-full"
+                />
+              </div>
+              <div className="text-[9px] font-mono text-terminal-dim mt-0.5">Hypothetical starting capital</div>
+            </div>
+          )}
           <div>
             <label className="text-[10px] font-mono text-terminal-muted uppercase tracking-wide block mb-1">Plan Start Date</label>
             <input type="date" value={draft.startDate}
