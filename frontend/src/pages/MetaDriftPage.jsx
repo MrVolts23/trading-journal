@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { getMetaDriftCalendar, saveMetaDriftEntry, deleteMetaDriftEntry } from '../lib/api';
 import { fmtCurrency, MONTH_NAMES } from '../lib/utils';
+import MetaDriftScenario from './MetaDriftScenario';
 
 const RISK_PCT = 3; // 1R = 3% of opening balance
 
@@ -166,6 +167,7 @@ export default function MetaDriftPage() {
   const [dayData, setDayData] = useState({});   // date → day object
   const [rrMap,   setRrMap]   = useState({});   // date → rr_value
   const [loading, setLoading] = useState(true);
+  const [mode,    setMode]    = useState('live');   // 'live' | 'scenario'
 
   const account = filters?.account || 'All';
 
@@ -284,10 +286,25 @@ export default function MetaDriftPage() {
         <div>
           <h1 className="text-lg font-mono font-semibold text-terminal-text tracking-wide">MetaDrift</h1>
           <p className="text-xs font-mono text-terminal-muted mt-0.5">
-            Backtest against your real history · 1R = {RISK_PCT}% of opening balance
+            {mode === 'scenario'
+              ? 'Scenario — compound a month from a custom balance, multiple trades per day'
+              : <>Backtest against your real history · 1R = {RISK_PCT}% of opening balance</>}
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Live / Scenario toggle — Live is the original backtest, untouched */}
+          <div className="flex items-center rounded border border-terminal-border overflow-hidden mr-2">
+            {[['live', 'Live'], ['scenario', 'Scenario']].map(([key, label]) => (
+              <button key={key} onClick={() => setMode(key)}
+                className={`px-3 py-1 text-xs font-mono transition-colors ${
+                  mode === key
+                    ? (key === 'scenario' ? 'bg-terminal-amber text-black font-semibold' : 'bg-terminal-green text-black font-semibold')
+                    : 'text-terminal-muted hover:text-terminal-text'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
           <button onClick={prevMonth} className="p-1.5 rounded hover:bg-terminal-hover text-terminal-muted hover:text-terminal-text transition-colors">
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -300,6 +317,11 @@ export default function MetaDriftPage() {
         </div>
       </div>
 
+      {/* ── Scenario mode — pure projection, no real data ── */}
+      {mode === 'scenario' && <MetaDriftScenario year={year} month={month} />}
+
+      {/* ── Live mode — original backtest, unchanged ── */}
+      {mode === 'live' && (<>
       {/* ── Summary bar ── */}
       {hasSummary && (
         <div className="card p-4 grid grid-cols-3 gap-x-6 gap-y-4">
@@ -505,6 +527,7 @@ export default function MetaDriftPage() {
         </div>
         <span>1R = {RISK_PCT}% × open balance</span>
       </div>
+      </>)}
     </div>
   );
 }
