@@ -18,7 +18,9 @@ export GH_TOKEN="$(gh auth token)"
 # Sign with the Developer ID cert (distribution-grade, in the login keychain since Mike's
 # Apple Developer enrolment). Pinned so electron-builder never picks a different identity —
 # a signing-identity change re-triggers the app's one-time keychain prompt.
-export CSC_NAME="Developer ID Application: Michael A Volts (TKL27C5YHV)"
+# NOTE: name only — electron-builder rejects the "Developer ID Application:" prefix and
+# picks the Developer ID cert for this name automatically.
+export CSC_NAME="Michael A Volts (TKL27C5YHV)"
 
 echo "==> Bumping version ($LEVEL)…"
 NEW_VERSION="$(npm version "$LEVEL" --no-git-tag-version | tr -d 'v')"
