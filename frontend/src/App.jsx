@@ -36,9 +36,14 @@ export default function App() {
           <Route path="/journal" element={<TradeJournalPage />} />
           <Route path="/key-setups" element={<KeySetupsPage />} />
           <Route path="/key-lessons" element={<KeyLessonsPage />} />
-          <Route path="/risk" element={<RiskManagementPage />} />
-          <Route path="/trade-backtest" element={<TradeBacktestPage />} />
-          <Route path="/metadrift" element={<Navigate to="/trade-backtest" replace />} />
+          {/* Risk & Reward split into three sidebar tabs (same page, route-driven) */}
+          <Route path="/risk"              element={<RiskManagementPage tab="risk" />} />
+          <Route path="/account-monitor"   element={<RiskManagementPage tab="monitor" />} />
+          <Route path="/reward-management" element={<RiskManagementPage tab="reward" />} />
+          {/* Trade & Backtest split into two sidebar tabs (same page, route-driven) */}
+          <Route path="/daily-setup"    element={<TradeBacktestPage tab="daily" />} />
+          <Route path="/metadrift"      element={<TradeBacktestPage tab="metadrift" />} />
+          <Route path="/trade-backtest" element={<Navigate to="/daily-setup" replace />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

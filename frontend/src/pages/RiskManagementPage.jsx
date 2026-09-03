@@ -287,8 +287,12 @@ function SessionTracker({ balance, riskPct }) {
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────
-export default function RiskManagementPage() {
-  const [activeTab, setActiveTab] = useState('risk'); // 'risk' | 'reward'
+// `tab` prop = route-driven mode: /risk, /account-monitor and /reward-management each render
+// ONE tab with no internal tab bar (they're separate sidebar entries now). Without the prop the
+// page keeps its original 3-tab bar.
+export default function RiskManagementPage({ tab }) {
+  const [activeTab, setActiveTab] = useState(tab || 'risk'); // 'risk' | 'monitor' | 'reward'
+  useEffect(() => { if (tab) setActiveTab(tab); }, [tab]);
   const [balance,     setBalance]     = useState(() => loadLS(LS_BALANCE, ''));
   const [riskPct,     setRiskPct]     = useState(() => loadLS(LS_RISK, '3'));
   const [liveBalance, setLiveBalance] = useState(null);
@@ -334,24 +338,24 @@ export default function RiskManagementPage() {
   return (
     <div className="p-6 space-y-6">
 
-      {/* ── Tab bar ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-0 border-b border-terminal-border">
+      {/* ── Tab bar (hidden when route-driven via the tab prop) ───────────── */}
+      {!tab && <div className="flex items-center gap-0 border-b border-terminal-border">
         {[
           { key: 'risk',    label: 'Risk Management'   },
           { key: 'monitor', label: 'Account Monitor'   },
-          { key: 'reward',  label: 'Reward Management'  },
-        ].map(tab => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+          { key: 'reward',  label: 'Trade Compounder'   },
+        ].map(t => (
+          <button key={t.key} onClick={() => setActiveTab(t.key)}
             className={`px-5 py-2.5 text-sm font-mono font-semibold border-b-2 -mb-px transition-colors ${
-              activeTab === tab.key
+              activeTab === t.key
                 ? 'border-blue-400 text-blue-400'
                 : 'border-transparent text-terminal-dim hover:text-terminal-text'
             }`}
           >
-            {tab.label}
+            {t.label}
           </button>
         ))}
-      </div>
+      </div>}
 
       {/* ── Reward tab ───────────────────────────────────────────────────── */}
       {activeTab === 'reward' && <RewardManagementPage />}
