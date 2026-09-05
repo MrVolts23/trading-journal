@@ -22,7 +22,7 @@ import { getSettings } from '../../lib/api';
 // Quant Desk (GMA) is DEV-ONLY until it ships: import.meta.env.DEV is statically true under the
 // Vite dev server and false in the production build, so the GMA entries are tree-shaken out of
 // the installed app. Remove this gate when GMA ships.
-const GMA_ENABLED = import.meta.env.DEV;
+const GMA_ENABLED = true; // Quant Desk ships (Mike, 2026-09-05); was import.meta.env.DEV while parked
 
 // Registry of every page the sidebar can show. Layout refers to pages by route.
 const PAGES = {
@@ -41,9 +41,11 @@ const PAGES = {
   // Quant Desk (Gold Metal Alchemist) — dev builds only, see GMA_ENABLED
   ...(GMA_ENABLED ? {
     '/alchemy-lab':     { label: 'Alchemy Lab',       icon: Sparkles,  activeColor: 'text-amber-400 border-amber-400' },
-    '/loop-console':    { label: 'Loop Console',      icon: Activity,  activeColor: 'text-terminal-green border-terminal-green' },
-    '/strategy-studio': { label: 'Strategy Studio',   icon: GitBranch, activeColor: 'text-purple-400 border-purple-400' },
-    '/lab':             { label: 'The Lab',           icon: Beaker,    activeColor: 'text-cyan-400 border-cyan-400' },
+    // Quant Desk four screens (Mike's loop: Edge → Risk → Results → Activity). One accent: amber.
+    '/desk/edge':       { label: 'Edge',              icon: Sparkles,    activeColor: 'text-amber-400 border-amber-400' },
+    '/desk/risk':       { label: 'Risk',              icon: ShieldCheck, activeColor: 'text-amber-400 border-amber-400' },
+    '/desk/results':    { label: 'Results',           icon: BarChart3,   activeColor: 'text-amber-400 border-amber-400' },
+    '/desk/activity':   { label: 'Activity',          icon: Activity,    activeColor: 'text-amber-400 border-amber-400' },
   } : {}),
   '/daily-setup':       { label: 'Daily Setup',       icon: LayoutGrid },
   '/metadrift':         { label: 'MetaDrift',         icon: GitCompare,  activeColor: 'text-purple-400 border-purple-400' },
@@ -74,7 +76,11 @@ const iconByName = (label) => {
 const groupIcon = (g) => ICON_MAP[g.icon] || iconByName(g.label) || GROUP_ICONS[g.id] || Folder;
 
 // Old route → its replacements, substituted IN PLACE so a saved arrangement keeps its spot.
-const LEGACY = { '/trade-backtest': ['/daily-setup', '/metadrift'] };
+const LEGACY = {
+  '/trade-backtest': ['/daily-setup', '/metadrift'],
+  // Quant Desk slice 1 → four screens (2026-09-03)
+  '/lab': ['/desk/results'], '/desk/bench': ['/desk/results'], '/strategy-studio': ['/desk/edge'], '/loop-console': ['/desk/activity'],
+};
 
 // Mike's arrangement, baked 2026-09-03 from his "Copy layout" (the DnD editor stays until the
 // final ship; Reset returns to this).
@@ -92,10 +98,12 @@ const DEFAULT_LAYOUT = [
   ]},
   { type: 'group', id: 'g_alchemy', label: 'Alchemy', children: [
     { type: 'item', to: '/alchemy' }, { type: 'item', to: '/alchemy-calendar' },
+    // Alchemy Lab lives with Alchemy for now (Mike, 2026-09-03); Quant Desk = strategy channel.
+    ...(GMA_ENABLED ? [{ type: 'item', to: '/alchemy-lab' }] : []),
   ]},
   ...(GMA_ENABLED ? [{ type: 'group', id: 'g_quant', label: 'Quant Desk', children: [
-    { type: 'item', to: '/alchemy-lab' }, { type: 'item', to: '/loop-console' },
-    { type: 'item', to: '/strategy-studio' }, { type: 'item', to: '/lab' },
+    { type: 'item', to: '/desk/edge' }, { type: 'item', to: '/desk/risk' },
+    { type: 'item', to: '/desk/results' }, { type: 'item', to: '/desk/activity' },
   ]}] : []),
   { type: 'group', id: 'g_calculators', label: 'Calculators', children: [
     { type: 'item', to: '/reward-management' },
@@ -172,6 +180,44 @@ function moveInto(layout, id, groupId) {
   const out = rest.map(n => (n.type === 'group' && n.id === groupId) ? (placed = true, { ...n, children: [...n.children, node] }) : n);
   return placed ? out : [...rest, node];
 }
+
+// One-time layout migrations for users with a saved arrangement (applied once per id,
+// then Mike is free to drag things wherever he likes without them snapping back).
+const LS_MIGRATIONS = 'sidebar_migrations_v1';
+const MIGRATIONS = [
+  { id: 'alchemy-lab-under-alchemy-2026-09-03', run: (l) => PAGES['/alchemy-lab'] ? moveInto(l, '/alchemy-lab', 'g_alchemy') : l },
+  // Quant Desk slice 1: Test Bench + Risk Profile belong in the Quant Desk group (saved layouts append new pages at top level).
+  { id: 'quant-desk-bench-risk-2026-09-03', run: (l) => {
+    let out = l;
+    for (const to of ['/desk/bench', '/desk/risk']) if (PAGES[to]) out = moveInto(out, to, 'g_quant');
+    return out;
+  } },
+  // Quant Desk rebuilt as Mike's four screens: the g_quant group becomes exactly Edge → Risk → Results → Activity.
+  // Old routes vanish via normalizeLayout (PAGES dropped them; LEGACY maps them in place), then moveInto puts each
+  // of the four at the END of g_quant in order, so the group reads Edge, Risk, Results, Activity.
+  { id: 'quant-desk-four-screens-2026-09-03', run: (l) => {
+    let out = l.some((n) => n.type === 'group' && n.id === 'g_quant') ? l : [...l, { type: 'group', id: 'g_quant', label: 'Quant Desk', children: [] }];
+    for (const to of ['/desk/edge', '/desk/risk', '/desk/results', '/desk/activity']) if (PAGES[to]) out = moveInto(out, to, 'g_quant');
+    return out;
+  } },
+];
+function applyMigrations(layout) {
+  const done = new Set(loadJSON(LS_MIGRATIONS, []));
+  let out = layout, changed = false;
+  for (const m of MIGRATIONS) {
+    if (done.has(m.id)) continue;
+    out = m.run(out); done.add(m.id); changed = true;
+  }
+  // Persist the migrated layout together with the flag: React StrictMode runs state
+  // initializers twice in dev, so the second pass must load the already-moved layout.
+  if (changed) {
+    try {
+      localStorage.setItem(LS_LAYOUT, JSON.stringify(out));
+      localStorage.setItem(LS_MIGRATIONS, JSON.stringify([...done]));
+    } catch {}
+  }
+  return out;
+}
 function moveTop(layout, id) {
   const { node, rest } = removeNode(layout, id);
   return node ? [...rest, node] : layout;
@@ -201,7 +247,7 @@ export default function Sidebar() {
   const location = useLocation();
   const [journalName, setJournalName] = useState(() => localStorage.getItem('journal_name') || '');
   const [logoError, setLogoError]     = useState(false);
-  const [layout, setLayout]           = useState(() => normalizeLayout(loadJSON(LS_LAYOUT, DEFAULT_LAYOUT)));
+  const [layout, setLayout]           = useState(() => applyMigrations(normalizeLayout(loadJSON(LS_LAYOUT, DEFAULT_LAYOUT))));
   const [groups, setGroups]           = useState(() => loadJSON(LS_GROUPS, {}));
   const [editMode, setEditMode]       = useState(false);
   const [renaming, setRenaming]       = useState(null);   // { id, value }

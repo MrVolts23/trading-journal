@@ -1,0 +1,9 @@
+{
+  "name": "gma-loops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gold Metal Alchemist loop runner — own better-sqlite3 build for system node (backend's copy is Electron-ABI; do not share or rebuild it)",
+  "dependencies": {
+    "better-sqlite3": "^11.0.0"
+  }
+}

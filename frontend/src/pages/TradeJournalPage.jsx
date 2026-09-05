@@ -82,12 +82,32 @@ function NotePreview({ text }) {
   );
 }
 
+// ── Fullscreen image lightbox (click or Esc to close) ────────────────────────
+function Lightbox({ src, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center cursor-zoom-out p-4"
+    >
+      <img src={src} alt="chart fullscreen" className="max-w-full max-h-full object-contain rounded" />
+    </div>
+  );
+}
+
 // ── Hoverable screenshot thumbnail ───────────────────────────────────────────
-function ScreenshotThumb({ src }) {
+function ScreenshotThumb({ src, onOpen }) {
   if (!src) return null;
   return (
     <div className="relative group inline-block">
-      <div className="w-8 h-6 rounded border border-terminal-border overflow-hidden cursor-pointer">
+      <div
+        className="w-8 h-6 rounded border border-terminal-border overflow-hidden cursor-zoom-in"
+        onClick={(e) => { e.stopPropagation(); onOpen?.(src); }}
+      >
         <img src={src} alt="chart" className="w-full h-full object-cover" />
       </div>
       <div className="absolute right-0 top-full mt-1 z-50 hidden group-hover:block pointer-events-none"
@@ -109,6 +129,7 @@ export default function TradeJournalPage() {
   const [page,        setPage]        = useState(1);
   const [loading,     setLoading]     = useState(true);
   const [selected,    setSelected]    = useState(null);
+  const [lightbox,    setLightbox]    = useState(null);
   const [saving,      setSaving]      = useState(false);
   const [strategies,  setStrategies]  = useState([]);
   const [filterGrade, setFilterGrade] = useState('');
@@ -488,7 +509,7 @@ export default function TradeJournalPage() {
                       </td>
                       <td className="table-cell"><NotePreview text={t.lessons} /></td>
                       <td className="table-cell text-center">
-                        <ScreenshotThumb src={t.screenshot} />
+                        <ScreenshotThumb src={t.screenshot} onOpen={setLightbox} />
                         {!t.screenshot && <span className="text-terminal-border">—</span>}
                       </td>
                     </tr>
@@ -949,7 +970,8 @@ export default function TradeJournalPage() {
               <label className="text-[10px] font-mono text-terminal-muted uppercase tracking-wide block mb-1.5">Chart Screenshot</label>
               {draft.screenshot ? (
                 <div className="relative group">
-                  <img src={draft.screenshot} alt="chart" className="w-full rounded border border-terminal-border object-contain"
+                  <img src={draft.screenshot} alt="chart" onClick={() => setLightbox(draft.screenshot)}
+                    className="w-full rounded border border-terminal-border object-contain cursor-zoom-in"
                     style={{ maxHeight: 280 }} />
                   <button
                     onClick={() => setDraft(d => ({ ...d, screenshot: null }))}
@@ -972,6 +994,8 @@ export default function TradeJournalPage() {
           </div>
         </div>
       )}
+
+      {lightbox && <Lightbox src={lightbox} onClose={() => setLightbox(null)} />}
     </div>
   );
 }

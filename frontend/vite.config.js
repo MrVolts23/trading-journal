@@ -7,7 +7,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: `http://localhost:${process.env.API_PORT || 3001}`, // API_PORT=3002 = dev backend beside the installed app
         changeOrigin: true,
         proxyTimeout: 120000,
         timeout: 120000,

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopNav from './TopNav';
+import DeskChat from '../desk/DeskChat';
 
 export default function Layout() {
   const [account, setAccount] = useState('All');
@@ -14,6 +15,9 @@ export default function Layout() {
   };
 
   const filters = { account, dateStart, dateEnd };
+  // "Talk to the desk" lives only on the Quant Desk pages (/desk/...).
+  const { pathname } = useLocation();
+  const onDesk = pathname.startsWith('/desk');
 
   return (
     <div className="flex h-screen overflow-hidden bg-terminal-bg">
@@ -26,9 +30,12 @@ export default function Layout() {
           dateEnd={dateEnd}
           onDateChange={handleDateChange}
         />
-        <main className="flex-1 overflow-auto">
-          <Outlet context={filters} />
-        </main>
+        <div className="flex-1 flex min-h-0 overflow-hidden">
+          <main className="flex-1 min-w-0 overflow-auto">
+            <Outlet context={filters} />
+          </main>
+          {onDesk && <DeskChat />}
+        </div>
       </div>
     </div>
   );

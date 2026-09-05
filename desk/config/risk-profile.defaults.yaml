@@ -1,0 +1,47 @@
+# Quant Desk default risk profile. DEMO ONLY — nothing under desk/ executes trades.
+# Every field is manual/editable in the Risk Profile page. provenance says who set each value:
+#   mike-confirmed  = Mike stated it
+#   claude-assumed  = placeholder until Mike edits it (the UI shows a chip so it is never mistaken for his)
+name: Gold 1% demo
+symbol: XAUUSD
+account_ccy: CAD                 # balance is treated 1:1 with USD for sizing for now; the ccy is labeled in the UI
+account_size: 3454.22
+risk_pct_per_trade: 1.0          # % of account risked per trade; hard max 3.0 (enforced by the API and the UI stepper)
+max_daily_loss_r: 2.0            # stop entering for the PT day once closed R for that day <= −2.0  [mike-confirmed]
+max_trades_per_day: 6
+max_trades_per_session: 3
+max_consecutive_losses: 3        # N losers in a row (closed, same PT day) → done for the day
+max_concurrent: 1                # passed to the engine as maxConcurrent
+max_drawdown_halt_pct: 10        # % of account drawdown at which the (future, human-gated) desk halts; informational in slice 1
+sessions:                        # PT hours (PT = server − 10h); passed to the engine as params.windows
+  - { name: asia, start: 15, end: 23 }
+  - { name: ny, start: 4, end: 13.5 }
+hard_lot_cap: 1.0                # lots never exceed this regardless of balance
+compounding: false               # false = size every trade off the starting balance; true = off the running balance
+cost_model:
+  spreadUsd: 0.25
+  slippageUsd: 0.05
+symbol_facts:                    # XAUUSD: 1 lot = 100 oz → $1.00 price move on 1.00 lot = $100
+  contract_size: 100
+  lot_step: 0.01
+  min_lot: 0.01
+  tick_size: 0.01
+  tick_value: 1.0                # USD per tick per lot
+  usd_per_point_per_lot: 100
+provenance:
+  name: claude-assumed
+  symbol: claude-assumed
+  account_ccy: claude-assumed
+  account_size: claude-assumed
+  risk_pct_per_trade: claude-assumed
+  max_daily_loss_r: mike-confirmed
+  max_trades_per_day: claude-assumed
+  max_trades_per_session: claude-assumed
+  max_consecutive_losses: claude-assumed
+  max_concurrent: claude-assumed
+  max_drawdown_halt_pct: claude-assumed
+  sessions: claude-assumed
+  hard_lot_cap: claude-assumed
+  compounding: claude-assumed
+  cost_model: claude-assumed
+  symbol_facts: claude-assumed

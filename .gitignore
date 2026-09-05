@@ -23,3 +23,6 @@ npm-debug.log*
 # Env
 .env
 .env.local
+
+# Quant Desk: bar data is local, never committed
+desk/data/*.csv

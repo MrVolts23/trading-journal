@@ -1,6 +1,6 @@
 {
   "name": "mikes-trading-journal",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "description": "Mike's Trading Journal — desktop app",
   "main": "electron/main.js",
   "scripts": {
@@ -9,7 +9,8 @@
     "electron:dev": "electron .",
     "electron:build": "npm run build-frontend && electron-builder --mac",
     "electron:build-win": "npm run build-frontend && electron-builder --win",
-    "electron:publish": "npm run build-frontend && electron-builder --mac --publish always"
+    "electron:publish": "npm run build-frontend && electron-builder --mac --publish always",
+    "dev:all": "zsh ./dev.sh"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.3",
@@ -43,6 +44,16 @@
       {
         "from": "frontend/dist",
         "to": "frontend/dist"
+      },
+      {
+        "from": "desk",
+        "to": "desk",
+        "filter": [
+          "**/*",
+          "!data/**/*",
+          "!tests/**/*",
+          "!node_modules/.cache/**/*"
+        ]
       }
     ],
     "mac": {

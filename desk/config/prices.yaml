@@ -1,0 +1,31 @@
+# USD per million tokens. Read by desk/src/model/provider.js to cost every call LOCALLY (the API
+# does not return dollars). A model missing from this file is costed at the requested model's rates.
+#
+#   input          uncached prompt tokens
+#   output         generated tokens (thinking included)
+#   cache_read     prompt tokens served from the prompt cache
+#   cache_write_5m prompt tokens written to the 5-minute cache
+
+claude-fable-5-1:            # Mike's pick for the desk chat (claude-api skill, 2026-09-03)
+  input: 10
+  output: 50
+  cache_read: 0.25
+  cache_write_5m: 12.5
+
+claude-opus-5:               # possible server-side refusal fallback target ($5/$25; cache ratios assumed 0.1x / 1.25x)
+  input: 5
+  output: 25
+  cache_read: 0.5
+  cache_write_5m: 6.25
+
+claude-opus-4-8:             # cyber-category refusal fallback target ($5/$25; cache ratios assumed 0.1x / 1.25x)
+  input: 5
+  output: 25
+  cache_read: 0.5
+  cache_write_5m: 6.25
+
+local:                       # the M5 Ultra box, later: electricity only
+  input: 0
+  output: 0
+  cache_read: 0
+  cache_write_5m: 0

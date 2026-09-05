@@ -1,0 +1,17 @@
+# Quant Desk verifier gates (desk/src/math/gates.js).
+# EVERY threshold in this file is claude-assumed (2026-09-03) until Mike edits it — nothing here was
+# confirmed by Mike. The verifier is numerical and non-overridable: a model may narrate a verdict, never
+# overturn it. Keep this file FLAT (key: value) — gates.js can read it without js-yaml installed.
+
+min_trades_total: 60                 # claude-assumed — fewer trades than this cannot support a claim
+min_trades_per_fold: 15              # claude-assumed — each anchored fold must have at least this many trades
+folds_positive_min: 4                # claude-assumed — of 5 anchored folds, this many must be net_r>0 AND PF>1 (fold consistency, not walk-forward)
+min_profit_factor: 1.10              # claude-assumed — research-window profit factor floor
+max_dd_r_multiple_of_daily_cap: 10   # claude-assumed — max_dd_r <= 10 × risk profile max_daily_loss_r (2.0 → 20R)
+bootstrap_n: 1000                    # claude-assumed — resamples for P(net R > 0)
+bootstrap_seed: 20260903             # claude-assumed — fixed seed so verdicts are reproducible
+# bootstrap_p_positive threshold is not a constant: it is trialPenalizedThreshold(n_trials) = 1 − 0.05/log2(n_trials + 2)
+psr_report_only: true                # claude-assumed — PSR / deflated Sharpe are reported, not enforced, until…
+psr_report_only_below_trades: 150    # claude-assumed — …the research window has this many trades
+psr_min: 0.95                        # claude-assumed — PSR floor once enforced (Bailey & López de Prado convention)
+blocked_below_trades: 10             # claude-assumed — below this the verdict is BLOCKED (too thin), not REJECT

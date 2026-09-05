@@ -24,6 +24,8 @@ const mistakeTypesRouter   = require('./routes/mistakeTypes');
 const metadriftRouter      = require('./routes/metadrift');
 const dailySetupRouter     = require('./routes/dailySetup');
 const newsRouter           = require('./routes/news');
+const gmaRouter            = require('./routes/gma');
+const deskRouter           = require('./routes/desk');   // Quant Desk (desk/ sibling folder)
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -54,6 +56,8 @@ app.use('/api/mistake-types',   mistakeTypesRouter);
 app.use('/api/metadrift',       metadriftRouter);
 app.use('/api/daily-setup',     dailySetupRouter);
 app.use('/api/news',           newsRouter);
+app.use('/api/gma',            gmaRouter);
+app.use('/api/desk',           deskRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -92,6 +96,15 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`\n🚀 Trading Journal API running on http://localhost:${PORT}`);
   console.log(`   Database: ${path.resolve(__dirname, '../data/journal.db')}\n`);
+
+  // Gold Metal Alchemist: poll the MT5 exporter drop folder (no-op until the EA runs)
+  if (!process.env.GMA_NO_POLL) {
+    try {
+      require('./services/gmaIngestService').startPolling();
+    } catch (e) {
+      console.error('[GMA ingest] failed to start polling:', e.message);
+    }
+  }
 });
 
 module.exports = app;

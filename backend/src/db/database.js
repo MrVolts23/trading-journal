@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const SCHEMA = require('./schema');
+const { applyGmaSchema } = require('./gmaSchema');
 
 // Database lives in a SIBLING folder next to the app folder so it survives updates.
 //
@@ -39,6 +40,7 @@ function getDb() {
     db.exec(SCHEMA);
     runMigrations(db);
     seedDefaults(db);
+    applyGmaSchema(db);
   }
   return db;
 }

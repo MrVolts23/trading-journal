@@ -1,0 +1,42 @@
+# Which model answers which role. Read by desk/src/model/provider.js.
+#
+# provider: anthropic  -> desk/src/model/anthropic.js (key from the macOS keychain, never a file)
+# provider: local      -> desk/src/model/local.js (OpenAI-compatible server; needs providers.local.base_url)
+#
+# Fable 5.1 facts baked into anthropic.js: thinking is always on (no thinking param), no
+# temperature/top_p/top_k, no assistant prefill, no forced tool_choice; depth = effort.
+
+roles:
+  chat:                          # the "Talk to the desk" drawer
+    provider: anthropic
+    model: claude-fable-5-1
+    effort: medium
+    max_tokens: 3000
+
+  # Reserved for the research loop (not wired yet). Kept here so the ledger can tell them apart.
+  planner:
+    provider: anthropic
+    model: claude-fable-5-1
+    effort: high
+    max_tokens: 6000
+    reserved: true
+  critic:
+    provider: anthropic
+    model: claude-fable-5-1
+    effort: medium
+    max_tokens: 3000
+    reserved: true
+  digest:
+    provider: anthropic
+    model: claude-fable-5-1
+    effort: low
+    max_tokens: 2000
+    reserved: true
+
+providers:
+  anthropic:
+    timeout_ms: 120000           # Fable can be slow; the drawer waits up to 180 s end to end
+  local:
+    base_url: null               # e.g. http://m5-ultra.local:8080  (set this and switch a role to provider: local)
+    model: null                  # the served model name, passed through as-is
+    timeout_ms: 120000

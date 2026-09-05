@@ -1,0 +1,6 @@
+# Quant Desk model spend limits. Read by desk/src/budget.js before EVERY model call.
+# The gate is: (dollars already spent this Pacific day) + (worst case of the call about to be made)
+# must stay under daily_cap_usd, or the call is refused with a plain message. warn_at is the
+# fraction of the cap at which the chat drawer starts showing a warning.
+daily_cap_usd: 10
+warn_at: 0.8

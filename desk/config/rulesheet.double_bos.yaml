@@ -1,0 +1,142 @@
+# Quant Desk rule sheet for the double_bos family. Read by desk/src/edge.js.
+#
+# Every rule is one plain-English sentence. {param} placeholders become inline controls on the
+# Edge page; the unit, type, min, max and choices for each placeholder come from
+# desk/engine/schema.json. A placeholder of the form {param:choice=Label|choice=Label} renders a
+# select with those Labels. A rule whose `params` list is empty is a static sentence.
+#
+# A placeholder for a param that is NOT in the rule's `params` list (e.g. {htf} inside a rule
+# about swing strength) is a cross reference: it shows that value read-only.
+#
+# tag: mike-confirmed = Mike stated it; claude-assumed = placeholder until Mike signs off.
+# show_when: optional expression on the strategy's params. Supported forms:
+#   key == value | key != value | key in [a, b, c] | key not in [a, b]  (joined with `and` / `or`)
+#
+# windows / spreadUsd / slippageUsd never appear here: they always come from the Risk page.
+
+family: double_bos
+display_name: Double BOS
+groups: [Setup, Entry, Stop, Exit, Session, Advanced]
+advanced_label: "Advanced. Rarely changed."
+never_editable_here: [windows, spreadUsd, slippageUsd]
+
+rules:
+  # ── Setup ────────────────────────────────────────────────────────────────────────────
+  - id: s1
+    group: Setup
+    text: "Read structure on the {htf}-minute chart and take entries on the {ltf}-minute chart."
+    params: [htf, ltf]
+    tag: mike-confirmed
+
+  - id: s2
+    group: Setup
+    text: "On the {htf}-minute chart, a swing counts when price stands out {pivotStrengthHtf} bars on each side."
+    params: [pivotStrengthHtf]
+    tag: claude-assumed
+
+  - id: s3
+    group: Setup
+    text: "Wait for a close through structure on the {htf}-minute chart, a pullback, then a second break the same way. Take {armMode:either=both kinds of pullback|sweep=only pullbacks that run the prior swing|retrace=only pullbacks that stop short of the prior swing}."
+    params: [armMode]
+    tag: mike-confirmed
+
+  - id: s4
+    group: Setup
+    text: "If price closes through structure the opposite way in between, the setup is cancelled."
+    params: []
+    tag: claude-assumed
+
+  - id: s5
+    group: Setup
+    text: "The setup stays live for {armExpiryHtfBars} bars on the {htf}-minute chart, then expires."
+    params: [armExpiryHtfBars]
+    tag: claude-assumed
+
+  # ── Entry ────────────────────────────────────────────────────────────────────────────
+  - id: e1
+    group: Entry
+    text: "Enter on the next {ltf}-minute break in the setup's direction, at that bar's close. Up to {maxEntriesPerArm} entries per setup."
+    params: [maxEntriesPerArm]
+    tag: mike-confirmed
+
+  - id: e2
+    group: Entry
+    text: "On the {ltf}-minute chart, a swing counts when price stands out {pivotStrengthLtf} bar(s) on each side."
+    params: [pivotStrengthLtf]
+    tag: claude-assumed
+
+  - id: e3
+    group: Entry
+    text: "Never hold more than {maxConcurrent} position(s) at once."
+    params: [maxConcurrent]
+    tag: claude-assumed
+
+  # ── Stop ─────────────────────────────────────────────────────────────────────────────
+  - id: st1
+    group: Stop
+    text: "The stop goes behind the last opposite {ltf}-minute swing, plus ${slPaddingUsd} of padding."
+    params: [slPaddingUsd]
+    tag: claude-assumed
+
+  - id: st2
+    group: Stop
+    text: "Skip that entry if the stop would be wider than ${maxSlUsd} (or tighter than $0.50). The setup stays live."
+    params: [maxSlUsd]
+    tag: claude-assumed
+
+  # ── Exit ─────────────────────────────────────────────────────────────────────────────
+  - id: x1
+    group: Exit
+    text: "Exit style: {exitModel:fixed_rr=take profit at a fixed target|trail_ltf=trail the stop behind confirmed swings|liquidity_v1=aim for the last liquidity point, trail behind swings as a backstop|liquidity_v2=exit on an opposite break after a liquidity pool is tapped|opposite_bos=exit on any opposite break|combo=target first, then trail}."
+    params: [exitModel]
+    tag: claude-assumed
+    note: "July's champion exit is 'aim for the last liquidity point'. Your v2.1 sheet still says 'trail behind swings', the rule you haven't signed off yet."
+
+  - id: x2
+    group: Exit
+    text: "Fixed target: {rr}R."
+    params: [rr]
+    tag: claude-assumed
+    show_when: exitModel == fixed_rr
+
+  - id: x3
+    group: Exit
+    text: "Trail padding: ${trailPadUsd} beyond the swing."
+    params: [trailPadUsd]
+    tag: claude-assumed
+    show_when: exitModel in [trail_ltf, liquidity_v1, combo]
+
+  - id: x4
+    group: Exit
+    text: "Liquidity targets look back {liquidityLookbackDays} days and take profit ${tpBufferUsd} before the level."
+    params: [liquidityLookbackDays, tpBufferUsd]
+    tag: claude-assumed
+    show_when: exitModel in [liquidity_v1, combo]
+
+  - id: x4b
+    group: Exit
+    text: "Liquidity pools look back {liquidityLookbackDays} days. A pool counts as tapped once price comes within ${tpBufferUsd} of it."
+    params: [liquidityLookbackDays, tpBufferUsd]
+    tag: claude-assumed
+    show_when: exitModel == liquidity_v2
+
+  - id: x5
+    group: Exit
+    text: "Start trailing after {trailActivateR}R."
+    params: [trailActivateR]
+    tag: claude-assumed
+    show_when: exitModel == combo
+
+  - id: x6
+    group: Exit
+    text: "Move the stop to breakeven at {beAtR}R (blank = never; July found 0.5R was catastrophic on gold)."
+    params: [beAtR]
+    tag: claude-assumed
+
+  # ── Session ──────────────────────────────────────────────────────────────────────────
+  - id: se1
+    group: Session
+    text: "Trade only inside the sessions on the Risk page, and go flat when a session ends."
+    params: []
+    tag: mike-confirmed
+    link: { to: /desk/risk, label: "Edit sessions on the Risk page" }

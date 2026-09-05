@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template — install.sh substitutes {{LOOP}}, {{HOUR}}, {{MINUTE}} and copies to
+     ~/Library/LaunchAgents/com.gma.{{LOOP}}.plist. NOT loaded automatically. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.gma.{{LOOP}}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>{{REPO}}/loops/run.js</string>
+    <string>{{LOOP}}</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>{{HOUR}}</integer>
+    <key>Minute</key><integer>{{MINUTE}}</integer>
+{{WEEKDAY_LINE}}
+  </dict>
+  <key>StandardOutPath</key><string>{{REPO}}/loops/logs/{{LOOP}}.log</string>
+  <key>StandardErrorPath</key><string>{{REPO}}/loops/logs/{{LOOP}}.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>
