@@ -417,8 +417,8 @@ export default function RewardManagementPage() {
 
             {/* Trade table */}
             <div className="card overflow-hidden">
-              <div className="grid grid-cols-[2.5rem_1fr_1fr_1fr_2fr] border-b border-terminal-border bg-terminal-surface">
-                {['#', 'BEFORE', 'RISK', 'AFTER', 'PROGRESS'].map(h => (
+              <div className="grid grid-cols-[2.5rem_1fr_1fr_1fr_1fr_2fr] border-b border-terminal-border bg-terminal-surface">
+                {['#', 'BEFORE', 'RISK', 'WON / LOST', 'AFTER', 'PROGRESS'].map(h => (
                   <div key={h} className="px-3 py-2 text-[10px] font-mono text-terminal-dim">{h}</div>
                 ))}
               </div>
@@ -426,10 +426,11 @@ export default function RewardManagementPage() {
                 {trades.map((t, i) => {
                   const prog   = Math.max(0, Math.min(100, ((t.after - params.startBal) / (params.targetBal - params.startBal)) * 100));
                   const active = i === safeIdx;
+                  const result = t.after - t.before; // dollar result of this trade (display only)
                   return (
                     <div key={i} ref={el => rowRefs.current[i] = el}
                       onClick={() => setScrubIdx(i)}
-                      className={`grid grid-cols-[2.5rem_1fr_1fr_1fr_2fr] border-b border-terminal-border/40 last:border-0 cursor-pointer transition-colors ${
+                      className={`grid grid-cols-[2.5rem_1fr_1fr_1fr_1fr_2fr] border-b border-terminal-border/40 last:border-0 cursor-pointer transition-colors ${
                         active
                           ? 'bg-terminal-green/10 border-l-2 border-l-terminal-green'
                           : 'hover:bg-terminal-surface/60'
@@ -438,6 +439,9 @@ export default function RewardManagementPage() {
                       <div className="px-3 py-2 text-xs font-mono text-terminal-dim">{t.n}</div>
                       <div className="px-3 py-2 text-xs font-mono text-terminal-text">{fmt(t.before)}</div>
                       <div className="px-3 py-2 text-xs font-mono font-semibold text-red-400">-{fmt(t.riskAmt)}</div>
+                      <div className={`px-3 py-2 text-xs font-mono font-semibold ${result >= 0 ? 'text-terminal-green' : 'text-terminal-red'}`}>
+                        {result >= 0 ? '+' : ''}{fmt(result)}
+                      </div>
                       <div className={`px-3 py-2 text-xs font-mono font-semibold ${t.change >= 0 ? 'text-terminal-green' : 'text-terminal-red'}`}>
                         {fmt(t.after)}
                       </div>

@@ -21,6 +21,10 @@ import KeySetupsPage from './pages/KeySetupsPage';
 import KeyLessonsPage from './pages/KeyLessonsPage';
 import RiskManagementPage from './pages/RiskManagementPage';
 import TradeBacktestPage from './pages/TradeBacktestPage';
+// Calculators batch (2026-09-05): frontend-only pages, inputs remembered in localStorage.
+import CompoundingPage from './pages/calc/CompoundingPage';
+import ExpectancyPage from './pages/calc/ExpectancyPage';
+import MonteCarloPage from './pages/calc/MonteCarloPage';
 
 export default function App() {
   // Restore saved theme on first load
@@ -58,6 +62,10 @@ export default function App() {
           <Route path="/risk"              element={<RiskManagementPage tab="risk" />} />
           <Route path="/account-monitor"   element={<RiskManagementPage tab="monitor" />} />
           <Route path="/reward-management" element={<RiskManagementPage tab="reward" />} />
+          {/* Calculators batch: Compounding, Expectancy & Kelly, Monte Carlo */}
+          <Route path="/calc/compounding" element={<CompoundingPage />} />
+          <Route path="/calc/expectancy"  element={<ExpectancyPage />} />
+          <Route path="/calc/monte-carlo" element={<MonteCarloPage />} />
           {/* Trade & Backtest split into two sidebar tabs (same page, route-driven) */}
           <Route path="/daily-setup"    element={<TradeBacktestPage tab="daily" />} />
           <Route path="/metadrift"      element={<TradeBacktestPage tab="metadrift" />} />

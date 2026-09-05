@@ -4,7 +4,7 @@ import {
   LayoutDashboard, TableProperties, Calendar, FileUp, Settings, TrendingUp, PiggyBank, FlaskConical,
   BookOpen, Layers, BookMarked, ShieldCheck, GitCompare, Wallet, Calculator, Folder,
   ChevronDown, ChevronRight, GripVertical, Pencil, Plus, RotateCcw, Copy, Check, X,
-  Sparkles, Activity, GitBranch, Beaker,
+  Sparkles, Activity, GitBranch, Beaker, Percent, Dices,
   // page icon + icon palette for user-created groups
   Wrench, Hammer, Landmark, Banknote, Coins, Vault, BarChart3, LineChart, Target, Crosshair, Compass, Gauge, Briefcase, Zap, Brain, Rocket, LayoutGrid,
 } from 'lucide-react';
@@ -36,6 +36,10 @@ const PAGES = {
   '/alchemy-calendar':  { label: 'Alchemy Calendar',  icon: Calendar },
   '/withdrawal-plan':   { label: 'Withdrawal Plan',   icon: PiggyBank },
   '/reward-management': { label: 'Trade Compounder',  icon: TrendingUp },
+  // Calculators batch (2026-09-05)
+  '/calc/compounding':  { label: 'Compounding',       icon: TrendingUp },
+  '/calc/expectancy':   { label: 'Expectancy & Kelly', icon: Percent },
+  '/calc/monte-carlo':  { label: 'Monte Carlo',       icon: Dices },
   '/risk':              { label: 'Risk Management',   icon: ShieldCheck, activeColor: 'text-blue-400 border-blue-400' },
   '/account-monitor':   { label: 'Account Monitor',   icon: Wallet },
   // Quant Desk (Gold Metal Alchemist) — dev builds only, see GMA_ENABLED
@@ -107,6 +111,7 @@ const DEFAULT_LAYOUT = [
   ]}] : []),
   { type: 'group', id: 'g_calculators', label: 'Calculators', children: [
     { type: 'item', to: '/reward-management' },
+    { type: 'item', to: '/calc/compounding' }, { type: 'item', to: '/calc/expectancy' }, { type: 'item', to: '/calc/monte-carlo' },
   ]},
   { type: 'item', to: '/risk' },
   { type: 'item', to: '/import' },
@@ -198,6 +203,13 @@ const MIGRATIONS = [
   { id: 'quant-desk-four-screens-2026-09-03', run: (l) => {
     let out = l.some((n) => n.type === 'group' && n.id === 'g_quant') ? l : [...l, { type: 'group', id: 'g_quant', label: 'Quant Desk', children: [] }];
     for (const to of ['/desk/edge', '/desk/risk', '/desk/results', '/desk/activity']) if (PAGES[to]) out = moveInto(out, to, 'g_quant');
+    return out;
+  } },
+  // Calculators batch: the three new calculator pages join Trade Compounder in the Calculators group
+  // (saved layouts append new pages at top level; if Mike deleted the group, recreate it first).
+  { id: 'calculators-batch-2026-09-05', run: (l) => {
+    let out = l.some((n) => n.type === 'group' && n.id === 'g_calculators') ? l : [...l, { type: 'group', id: 'g_calculators', label: 'Calculators', children: [] }];
+    for (const to of ['/calc/compounding', '/calc/expectancy', '/calc/monte-carlo']) if (PAGES[to]) out = moveInto(out, to, 'g_calculators');
     return out;
   } },
 ];
