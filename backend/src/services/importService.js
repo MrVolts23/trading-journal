@@ -108,7 +108,10 @@ function resolveAccount(loginId, broker) {
   const loginStr = String(loginId).trim();
   const brokerName = broker || 'Unknown';
 
-  const existing = db.prepare('SELECT name FROM accounts WHERE broker_account_id = ?').get(loginStr);
+  // Exact match first; then a comma-separated list (FTMO issues a new login for every phase,
+  // so one journal account can carry "111,222,333").
+  const existing = db.prepare('SELECT name FROM accounts WHERE broker_account_id = ?').get(loginStr)
+    || db.prepare("SELECT name FROM accounts WHERE ',' || REPLACE(broker_account_id, ' ', '') || ',' LIKE '%,' || ? || ',%'").get(loginStr);
   if (existing) return { name: existing.name, isNew: false };
 
   const name = `${brokerName} ${loginStr}`;
@@ -613,8 +616,10 @@ function previewImport(rows, mapping, importFromDate, account) {
       }
     }
 
-    // Extract deposit/withdrawal balance rows before filtering
-    balance_rows = extractEightCapBalanceRows(deduped, loginToAccount);
+    // Extract deposit/withdrawal balance rows before filtering.
+    // FTMO: skip them — the starting balance lives on the account (size) and phase resets are
+    // posted as corrections from Prop Management, so the report's balance rows would double count.
+    balance_rows = mapping.broker === 'FTMO' ? [] : extractEightCapBalanceRows(deduped, loginToAccount);
     // Standard column mapping (MT5 Excel, custom)
     const all = applyMapping(deduped, mapping, loginToAccount);
     // Apply explicit account override to every trade if provided

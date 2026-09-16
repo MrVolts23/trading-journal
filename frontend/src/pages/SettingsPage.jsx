@@ -2,8 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { Check, Plus, Trash2, AlertTriangle, X, Pencil, Save, RefreshCw } from 'lucide-react';
 import { getSettings, updateSettings, getAccounts, deleteAccount, getMistakeTypes, createMistakeType, updateMistakeType, deleteMistakeType, postBalanceCorrection, getAccountActivity, deleteAccountActivity } from '../lib/api';
 import api from '../lib/api';
+import { Link } from 'react-router-dom';
+import NewFtmoAccountForm from '../components/prop/NewFtmoAccountForm';
+import { findPropAccountByJournalId, removePropAccountByJournalId } from '../lib/propStore';
+import { PRODUCTS } from '../lib/propRules';
 
-const BROKERS = ['EightCap', 'MetaTrader 5', 'IC Markets', 'Pepperstone', 'Other'];
+const BROKERS = ['EightCap', 'FTMO', 'MetaTrader 5', 'IC Markets', 'Pepperstone', 'Other'];
 
 // ── Mistake Types Card ─────────────────────────────────────────────────────
 const PRESET_COLORS = [
@@ -534,6 +538,7 @@ export default function SettingsPage() {
   const handleDeleteAccount = async (accountId, accountName) => {
     try {
       const res = await deleteAccount(accountId);
+      removePropAccountByJournalId(accountId); // drop the Prop Management tracker entry tied to it, if any
       setActionResult(`✓ Deleted account "${accountName}" and ${res.tradesDeleted} trades`);
       setTimeout(() => setActionResult(''), 5000);
       refreshAccounts();
@@ -584,6 +589,18 @@ export default function SettingsPage() {
         {showAddAccount && (
           <div className="bg-terminal-surface border border-terminal-border rounded p-4 space-y-3">
             <div className="stat-label">New Account</div>
+            {newAccount.broker === 'FTMO' ? (
+              <>
+                <div>
+                  <label className="text-xs font-mono text-terminal-muted block mb-1">Broker</label>
+                  <select value={newAccount.broker} onChange={e => setNewAccount(a => ({ ...a, broker: e.target.value }))} className="select-field text-xs py-1.5 w-full max-w-xs">
+                    {BROKERS.map(b => <option key={b}>{b}</option>)}
+                  </select>
+                </div>
+                <NewFtmoAccountForm compact onCreate={() => { setShowAddAccount(false); setNewAccount({ name: '', broker: 'EightCap', currency: 'USD', initial_deposit: '', deposit_date: '' }); refreshAccounts(); }} onCancel={() => setShowAddAccount(false)} />
+              </>
+            ) : (
+            <>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-mono text-terminal-muted block mb-1">Account Name *</label>
@@ -617,6 +634,8 @@ export default function SettingsPage() {
               <button onClick={handleAddAccount} className="btn-primary text-xs py-1.5">Save Account</button>
               <button onClick={() => setShowAddAccount(false)} className="btn-ghost text-xs py-1.5">Cancel</button>
             </div>
+            </>
+            )}
           </div>
         )}
 
@@ -626,7 +645,13 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-mono font-semibold text-terminal-text">{a.name}</div>
-                <div className="text-xs font-mono text-terminal-muted">{a.broker} · {a.currency}</div>
+                <div className="text-xs font-mono text-terminal-muted">{a.broker} · {a.currency}{a.broker_account_id ? ` · login ${a.broker_account_id}` : ''}</div>
+                {a.broker === 'FTMO' && (() => { const p = findPropAccountByJournalId(a.id); return (
+                  <div className="text-xs font-mono text-terminal-muted mt-1">
+                    {p ? `${PRODUCTS[p.product]?.label || p.product} · ${p.failed ? 'failed' : PRODUCTS[p.product]?.phases[p.phaseIndex]?.label} · started ${p.startDate}` : 'not tracked on Prop Management yet'}
+                    {' · '}<Link to="/prop-management" className="text-amber-400 hover:underline">Open Prop Management</Link>
+                  </div>
+                ); })()}
               </div>
               <div className="flex items-center gap-3">
                 <span className="badge-open">Active</span>

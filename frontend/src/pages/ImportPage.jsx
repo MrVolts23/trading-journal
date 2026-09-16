@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Upload, Check, AlertTriangle, ChevronRight, Database, TrendingUp, Loader2, Trash2, Info, RefreshCw } from 'lucide-react';
 import { uploadImportFile, previewImport, commitImport, getAccounts, clearTradesByAccount } from '../lib/api';
+import { propAccountsForJournalNames, syncPropAccountFromJournal } from '../lib/propStore';
+import { pragueDate } from '../lib/propRules';
 import { fmtCurrency, statusBadgeClass } from '../lib/utils';
 
 const STEPS = ['Upload File', 'Map Fields', 'Preview', 'Done'];
@@ -35,8 +37,17 @@ const TV_BALANCE_HISTORY_PRESET = {
   mode:   'tv_balance_history',
 };
 
+// FTMO MT5 History Report — same layout as the EightCap report (FTMO is an MT5 broker too).
+// Login = the FTMO account number; it matches the journal account created in Settings/Prop Management.
+const FTMO_MT5_PRESET = {
+  ...EIGHTCAP_MT5_PRESET,
+  broker: 'FTMO',
+  label: 'FTMO MT5 (History Report)',
+};
+
 const PRESETS = {
   eightcap_mt5:         EIGHTCAP_MT5_PRESET,
+  ftmo_mt5:             FTMO_MT5_PRESET,
   tv_balance_history:   TV_BALANCE_HISTORY_PRESET,
   custom:               null,
 };
@@ -145,8 +156,10 @@ export default function ImportPage() {
         // Pre-resolve: make a temporary mapping so the UI can show account names
         // The actual resolution happens in previewImport on the backend
         const preview = {};
+        const brokerName = PRESETS[broker]?.broker || 'EightCap';
         for (const login of result.detectedLogins) {
-          preview[login] = `EightCap ${login}`;
+          const known = accounts.find(a => String(a.broker_account_id || '').split(',').map(x => x.trim()).includes(String(login)));
+          preview[login] = known ? known.name : `${brokerName} ${login}`;
         }
         setAutoAccounts(preview);
       }
@@ -196,6 +209,17 @@ export default function ImportPage() {
     setError('');
     try {
       const result = await commitImport(uploadId);
+      // FTMO: refill the Prop Management day log from the journal for every tracker account this import touched
+      try {
+        const names = [...new Set((previewData?.all_rows || []).map(r => r.account).filter(Boolean))];
+        const linked = propAccountsForJournalNames(names);
+        const propSync = [];
+        for (const pa of linked) {
+          const r = await syncPropAccountFromJournal(pa.id, pragueDate());
+          if (r) propSync.push({ name: pa.name, ...r });
+        }
+        if (propSync.length) result.propSync = propSync;
+      } catch (_) { /* tracker sync is best-effort */ }
       setImportResult(result);
       // Refresh accounts list (new accounts may have been created)
       getAccounts().then(setAccounts).catch(() => {});
@@ -265,6 +289,13 @@ export default function ImportPage() {
                   tip: 'Auto-detects account from Login column',
                 },
                 {
+                  key: 'ftmo_mt5',
+                  label: 'FTMO MT5',
+                  sub: 'History Report (.xlsx) from the FTMO terminal',
+                  icon: Database,
+                  tip: 'Matches your FTMO account by login · fills Prop Management',
+                },
+                {
                   key: 'tv_balance_history',
                   label: 'TradingView Paper',
                   sub: 'Balance History (.csv) — Recommended',
@@ -332,17 +363,28 @@ export default function ImportPage() {
             </div>
           )}
 
-          {broker === 'eightcap_mt5' && (
+          {(broker === 'eightcap_mt5' || broker === 'ftmo_mt5') && (
             <div className="card p-4 border border-terminal-green/20 bg-green-950/10 space-y-2">
               <div className="flex items-center gap-2">
                 <Info className="w-4 h-4 text-terminal-green flex-shrink-0" />
                 <div className="text-xs font-mono text-terminal-green font-semibold">Auto Account Detection</div>
               </div>
+              {broker === 'ftmo_mt5' ? (
+                <div className="text-xs font-mono text-terminal-muted leading-relaxed space-y-1">
+                  <div>In the FTMO MT5 terminal: Toolbox → History → right-click → Report → save as Excel. The Login column is your FTMO account number.</div>
+                  <div>Trades file under the FTMO journal account that carries that login. Every phase gets a new login at FTMO, so add each phase's login to the account on the Prop Management page before importing that phase.</div>
+                  <div>After import, the Prop Management day log is filled from these trades. Balance rows in the report are ignored, since the account size and phase resets are already handled.</div>
+                  {accounts.filter(a => a.broker === 'FTMO').length > 0 && (
+                    <div className="pt-1">Known FTMO accounts: {accounts.filter(a => a.broker === 'FTMO').map(a => `${a.name}${a.broker_account_id ? ` [${a.broker_account_id}]` : ' [no login yet]'}`).join(' · ')}</div>
+                  )}
+                </div>
+              ) : (
               <div className="text-xs font-mono text-terminal-muted leading-relaxed">
                 The Login column in your EightCap MT5 report contains your broker account number.
                 Accounts are automatically created or matched when you upload — perfect for copy-trading
                 accounts that share the same export file.
               </div>
+              )}
               <div className="text-[10px] font-mono text-terminal-dim">
                 Override below if you want to assign all trades to a specific account instead.
               </div>
@@ -395,7 +437,7 @@ export default function ImportPage() {
                 {uploading ? 'Uploading…' : 'Drop your file here'}
               </div>
               <div className="text-xs font-mono text-terminal-muted mt-1">
-                {broker === 'eightcap_mt5' ? 'Accepts .xlsx or .csv' : 'Accepts .csv or .xlsx'}
+                {broker === 'eightcap_mt5' || broker === 'ftmo_mt5' ? 'Accepts .xlsx or .csv' : 'Accepts .csv or .xlsx'}
               </div>
               {importFromDate && (
                 <div className="text-xs font-mono text-terminal-green mt-1">From {importFromDate}</div>
@@ -438,7 +480,7 @@ export default function ImportPage() {
                     <span className="text-terminal-muted">Login</span>
                     <span className="text-terminal-amber font-semibold">{login}</span>
                     <span className="text-terminal-dim">→</span>
-                    <span className="text-terminal-green">{autoAccounts[login] || `EightCap ${login}`}</span>
+                    <span className="text-terminal-green">{autoAccounts[login] || `${PRESETS[broker]?.broker || 'EightCap'} ${login}`}</span>
                     <span className="text-[10px] text-terminal-dim">(auto-created if new)</span>
                   </div>
                 ))}
@@ -681,6 +723,11 @@ export default function ImportPage() {
                 <div className="stat-label mt-1">Errors</div>
               </div>
             </div>
+            {importResult.propSync?.length > 0 && importResult.propSync.map(ps => (
+              <div key={ps.name} className="text-xs font-mono text-terminal-green bg-green-950/30 border border-terminal-green/30 px-4 py-2 rounded w-full max-w-sm text-center">
+                Prop Management filled for {ps.name}: {ps.synced} trades across {ps.days} day{ps.days === 1 ? '' : 's'}.
+              </div>
+            ))}
             {importResult.account_activity_inserted > 0 && (
               <div className="text-xs font-mono text-terminal-green bg-green-950/30 border border-terminal-green/30 px-4 py-2 rounded w-full max-w-sm text-center">
                 {importResult.account_activity_inserted} deposit/withdrawal entr{importResult.account_activity_inserted === 1 ? 'y' : 'ies'} saved — Withdrawal Plan starting balance updated.

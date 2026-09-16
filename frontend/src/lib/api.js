@@ -36,6 +36,8 @@ export const deleteDailySetup = (symbol, date) => api.delete('/daily-setup', { p
 
 // Accounts
 export const getAccounts = () => api.get('/accounts').then(r => r.data);
+export const createAccount = (data) => api.post('/accounts', data).then(r => r.data);
+export const updateAccount = (id, data) => api.patch(`/accounts/${id}`, data).then(r => r.data);
 export const deleteAccount = (id) => api.delete(`/accounts/${id}`).then(r => r.data);
 export const getAccountActivity = (params) => api.get('/accounts/activity', { params }).then(r => r.data);
 export const addAccountActivity = (data) => api.post('/accounts/activity', data).then(r => r.data);

@@ -32,11 +32,11 @@ router.get('/', (req, res) => {
 // POST create account
 router.post('/', (req, res) => {
   const db = getDb();
-  const { name, broker, currency, initial_deposit, deposit_date } = req.body;
+  const { name, broker, currency, initial_deposit, deposit_date, broker_account_id } = req.body;
   const result = db.prepare(`
-    INSERT INTO accounts (name, broker, currency, initial_deposit, deposit_date)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(name, broker, currency || 'USD', initial_deposit || 0, deposit_date);
+    INSERT INTO accounts (name, broker, currency, initial_deposit, deposit_date, broker_account_id)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(name, broker, currency || 'USD', initial_deposit || 0, deposit_date, broker_account_id ? String(broker_account_id) : null);
   res.json({ id: result.lastInsertRowid });
 });
 
@@ -68,11 +68,15 @@ router.patch('/settings', (req, res) => {
 // PATCH account — update initial_deposit (starting balance)
 router.patch('/:id', (req, res) => {
   const db = getDb();
-  const { initial_deposit } = req.body;
+  const { initial_deposit, broker_account_id } = req.body;
   const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
   if (!account) return res.status(404).json({ error: 'Account not found' });
-  db.prepare('UPDATE accounts SET initial_deposit = ? WHERE id = ?')
-    .run(parseFloat(initial_deposit) || 0, req.params.id);
+  if (initial_deposit !== undefined) {
+    db.prepare('UPDATE accounts SET initial_deposit = ? WHERE id = ?').run(parseFloat(initial_deposit) || 0, req.params.id);
+  }
+  if (broker_account_id !== undefined) {
+    db.prepare('UPDATE accounts SET broker_account_id = ? WHERE id = ?').run(broker_account_id ? String(broker_account_id) : null, req.params.id);
+  }
   res.json({ success: true });
 });
 

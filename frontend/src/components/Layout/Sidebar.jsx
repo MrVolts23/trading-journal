@@ -6,8 +6,7 @@ import {
   ChevronDown, ChevronRight, GripVertical, Pencil, Plus, RotateCcw, Copy, Check, X,
   Sparkles, Activity, GitBranch, Beaker, Percent, Dices,
   // page icon + icon palette for user-created groups
-  Wrench, Hammer, Landmark, Banknote, Coins, Vault, BarChart3, LineChart, Target, Crosshair, Compass, Gauge, Briefcase, Zap, Brain, Rocket, LayoutGrid,
-} from 'lucide-react';
+  Wrench, Hammer, Landmark, Banknote, Coins, Vault, BarChart3, LineChart, Target, Crosshair, Compass, Gauge, Briefcase, Zap, Brain, Rocket, LayoutGrid, Trophy } from 'lucide-react';
 import { getSettings } from '../../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -53,6 +52,7 @@ const PAGES = {
   } : {}),
   '/daily-setup':       { label: 'Daily Setup',       icon: LayoutGrid },
   '/metadrift':         { label: 'MetaDrift',         icon: GitCompare,  activeColor: 'text-purple-400 border-purple-400' },
+  '/prop-management':   { label: 'Prop Management',   icon: Trophy,      activeColor: 'text-amber-400 border-amber-400' },
   '/import':            { label: 'Import',            icon: FileUp },
   '/settings':          { label: 'Settings',          icon: Settings },
 };
@@ -91,7 +91,7 @@ const LEGACY = {
 const DEFAULT_LAYOUT = [
   { type: 'item', to: '/' },
   { type: 'group', id: 'g_trading_tools', label: 'Trading Tools', icon: 'Wrench', children: [
-    { type: 'item', to: '/daily-setup' }, { type: 'item', to: '/metadrift' },
+    { type: 'item', to: '/daily-setup' }, { type: 'item', to: '/metadrift' }, { type: 'item', to: '/prop-management' },
   ]},
   { type: 'group', id: 'g_journal', label: 'Journal', children: [
     { type: 'item', to: '/trades' }, { type: 'item', to: '/journal' }, { type: 'item', to: '/calendar' },
@@ -207,6 +207,7 @@ const MIGRATIONS = [
   } },
   // Calculators batch: the three new calculator pages join Trade Compounder in the Calculators group
   // (saved layouts append new pages at top level; if Mike deleted the group, recreate it first).
+  { id: 'prop-management-2026-09-16', run: (l) => (PAGES['/prop-management'] ? moveInto(l, '/prop-management', 'g_trading_tools') : l) },
   { id: 'calculators-batch-2026-09-05', run: (l) => {
     let out = l.some((n) => n.type === 'group' && n.id === 'g_calculators') ? l : [...l, { type: 'group', id: 'g_calculators', label: 'Calculators', children: [] }];
     for (const to of ['/calc/compounding', '/calc/expectancy', '/calc/monte-carlo']) if (PAGES[to]) out = moveInto(out, to, 'g_calculators');

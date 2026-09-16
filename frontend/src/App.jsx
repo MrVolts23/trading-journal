@@ -21,6 +21,7 @@ import KeySetupsPage from './pages/KeySetupsPage';
 import KeyLessonsPage from './pages/KeyLessonsPage';
 import RiskManagementPage from './pages/RiskManagementPage';
 import TradeBacktestPage from './pages/TradeBacktestPage';
+import PropManagementPage from './pages/PropManagementPage';
 // Calculators batch (2026-09-05): frontend-only pages, inputs remembered in localStorage.
 import CompoundingPage from './pages/calc/CompoundingPage';
 import ExpectancyPage from './pages/calc/ExpectancyPage';
@@ -70,6 +71,7 @@ export default function App() {
           <Route path="/daily-setup"    element={<TradeBacktestPage tab="daily" />} />
           <Route path="/metadrift"      element={<TradeBacktestPage tab="metadrift" />} />
           <Route path="/trade-backtest" element={<Navigate to="/daily-setup" replace />} />
+          <Route path="/prop-management" element={<PropManagementPage />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

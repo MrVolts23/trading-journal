@@ -110,6 +110,14 @@
     placeholder-terminal-dim focus:outline-none focus:border-terminal-green transition-colors;
   }
 
+  .input-field[type="date"] {
+    color-scheme: dark;
+  }
+  .input-field[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.85;
+  }
+
   .select-field {
     @apply bg-terminal-surface border border-terminal-border rounded px-3 py-2 text-sm font-mono text-terminal-text
     focus:outline-none focus:border-terminal-green transition-colors cursor-pointer;
