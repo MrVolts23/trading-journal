@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path  = require('path');
 const http  = require('http');
@@ -78,7 +78,9 @@ function createWindow() {
 // ── Auto-updater ──────────────────────────────────────────────────────────────
 function setupUpdater() {
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  // OFF on purpose: the built-in on-quit installer would run at the same moment as our own swap
+  // script below and the two would tear the app bundle apart ("damaged or incomplete").
+  autoUpdater.autoInstallOnAppQuit = false;
 
   autoUpdater.on('update-available', info => {
     mainWindow?.webContents.send('update-available', info.version);
@@ -95,6 +97,7 @@ function setupUpdater() {
 
   autoUpdater.on('update-downloaded', (info) => {
     downloadedUpdateFile = info?.downloadedFile || null;
+    updaterLog(`downloaded ${info?.version} -> ${downloadedUpdateFile}`);
     mainWindow?.webContents.send('update-downloaded');
     dialog.showMessageBox(mainWindow, {
       type: 'info',
@@ -108,6 +111,7 @@ function setupUpdater() {
 
   autoUpdater.on('error', err => {
     console.error('[updater]', err.message);
+    updaterLog(`updater error: ${err.message}`);
     mainWindow?.webContents.send('update-error', err.message);
   });
 
@@ -138,35 +142,62 @@ function findStagedZip() {
   } catch { return null; }
 }
 
+const RELEASES_URL = 'https://github.com/MrVolts23/trading-journal/releases/latest';
+function updaterLog(msg) {
+  try { fs.appendFileSync(path.join(app.getPath('userData'), 'updater.log'), `${new Date().toISOString()} ${msg}\n`); } catch (_) {}
+}
+function updateFailedDialog(reason) {
+  updaterLog(`FAILED: ${reason}`);
+  mainWindow?.webContents.send('update-error', reason);
+  dialog.showMessageBox(mainWindow, {
+    type: 'warning', title: 'Update could not be installed',
+    message: 'The update could not be installed automatically.',
+    detail: `${reason}\n\nYour current version and all your data are untouched. You can download the latest installer from the releases page.`,
+    buttons: ['Open releases page', 'Close'],
+  }).then(({ response }) => { if (response === 0) shell.openExternal(RELEASES_URL); });
+}
+
 function applyUpdateAndRestart() {
   try {
     const zip = findStagedZip();
     const appPath = path.resolve(process.execPath, '..', '..', '..'); // /Applications/Trading Journal.app
-    if (!zip || !appPath.endsWith('.app')) {
-      // Couldn't locate the staged build — fall back to the native installer.
-      autoUpdater.quitAndInstall();
-      return;
-    }
+    if (!zip) return updateFailedDialog('The downloaded update file could not be found.');
+    if (!appPath.endsWith('.app')) return updateFailedDialog(`Unexpected app location: ${appPath}`);
+    const log    = path.join(app.getPath('userData'), 'updater.log');
     const tmp    = path.join(app.getPath('temp'), 'tj-update-extract');
     const script = path.join(app.getPath('temp'), 'tj-apply-update.sh');
+    // Safe swap: extract → validate → stage next to the app → move old aside → move new in →
+    // verify → only then delete the old copy. Any failure puts the old app back and relaunches it.
     const sh = `#!/bin/bash
-# args: <app_pid> <zip> <app_path> <tmp_dir>
-APP_PID="$1"; ZIP="$2"; APP_PATH="$3"; TMP="$4"
-# wait for the running app to fully quit
+# args: <app_pid> <zip> <app_path> <tmp_dir> <log>
+APP_PID="$1"; ZIP="$2"; APP_PATH="$3"; TMP="$4"; LOG="$5"
+NEW="$APP_PATH.new"; OLD="$APP_PATH.old"
+say() { echo "$(date -u +%FT%TZ) [swap] $*" >> "$LOG"; }
+fail() { say "FAIL: $*"; rm -rf "$NEW" "$TMP"; if [ ! -d "$APP_PATH" ] && [ -d "$OLD" ]; then mv "$OLD" "$APP_PATH"; say "old app restored"; fi; /usr/bin/open "$APP_PATH"; exit 1; }
+say "start pid=$APP_PID zip=$ZIP app=$APP_PATH"
 for i in $(seq 1 120); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.5; done
-rm -rf "$TMP"; mkdir -p "$TMP"
-/usr/bin/ditto -x -k "$ZIP" "$TMP" || exit 1
-NEW_APP="$(/usr/bin/find "$TMP" -maxdepth 1 -name '*.app' | head -1)"
-if [ -n "$NEW_APP" ]; then
-  rm -rf "$APP_PATH"
-  /usr/bin/ditto "$NEW_APP" "$APP_PATH"
-  /usr/bin/xattr -dr com.apple.quarantine "$APP_PATH" 2>/dev/null || true
-  /usr/bin/open "$APP_PATH"
-fi
-rm -rf "$TMP"
+# helpers (backend, GPU, renderer) live inside the bundle; make sure none still hold it open
+/usr/bin/pkill -f "$APP_PATH/Contents/" 2>/dev/null; sleep 1
+rm -rf "$TMP" "$NEW" "$OLD"; mkdir -p "$TMP"
+/usr/bin/ditto -x -k "$ZIP" "$TMP" || fail "could not extract the update zip"
+SRC="$(/usr/bin/find "$TMP" -maxdepth 1 -name '*.app' | head -1)"
+[ -n "$SRC" ] || fail "no .app inside the update zip"
+[ -f "$SRC/Contents/Info.plist" ] || fail "update is missing Info.plist"
+EXE="$(/usr/bin/defaults read "$SRC/Contents/Info" CFBundleExecutable 2>/dev/null)"
+[ -n "$EXE" ] && [ -x "$SRC/Contents/MacOS/$EXE" ] || fail "update is missing its executable"
+/usr/bin/codesign --verify --deep --strict "$SRC" 2>>"$LOG" || fail "update failed its signature check"
+/usr/bin/ditto "$SRC" "$NEW" || fail "could not stage the new app"
+/usr/bin/codesign --verify --deep --strict "$NEW" 2>>"$LOG" || fail "staged copy failed its signature check"
+mv "$APP_PATH" "$OLD" || fail "could not move the old app aside"
+mv "$NEW" "$APP_PATH" || fail "could not move the new app into place"
+/usr/bin/xattr -dr com.apple.quarantine "$APP_PATH" 2>/dev/null || true
+say "installed $(/usr/bin/defaults read "$APP_PATH/Contents/Info" CFBundleShortVersionString 2>/dev/null)"
+rm -rf "$OLD" "$TMP"
+/usr/bin/open "$APP_PATH"
 `;
     fs.writeFileSync(script, sh, { mode: 0o755 });
-    const child = spawn('/bin/bash', [script, String(process.pid), zip, appPath, tmp], {
+    updaterLog(`applying update from ${zip}`);
+    const child = spawn('/bin/bash', [script, String(process.pid), zip, appPath, tmp, log], {
       detached: true,
       stdio: 'ignore',
     });
@@ -174,8 +205,7 @@ rm -rf "$TMP"
     setTimeout(() => app.quit(), 250);
   } catch (e) {
     console.error('[updater] custom install failed:', e.message);
-    mainWindow?.webContents.send('update-error', `Install failed: ${e.message}`);
-    try { autoUpdater.quitAndInstall(); } catch (_) {}
+    updateFailedDialog(`Install failed: ${e.message}`);
   }
 }
 

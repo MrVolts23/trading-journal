@@ -119,7 +119,9 @@ export function computeState(acct) {
   const targetAmt = phase.target != null ? initial * phase.target : null;
   const targetProgress = targetAmt ? closedProfit / targetAmt : null;
   const targetHit = targetAmt ? closedProfit >= targetAmt : false;
-  const tradingDays = dayRows.filter((r) => r.counted).length + (todayRow.counted ? 1 : 0);
+  // A trading day is a distinct Prague calendar date with at least one trade. Pressing End day twice on the
+  // same date, or trading again after End day, must not count as extra days.
+  const tradingDays = new Set([...dayRows, todayRow].filter((r) => r.counted).map((r) => r.date)).size;
   const minDaysMet = tradingDays >= (P.minDays || 0);
 
   // 1-Step Best Day rule (not a breach; a condition to pass)

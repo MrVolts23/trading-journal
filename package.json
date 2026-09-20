@@ -1,6 +1,6 @@
 {
   "name": "mikes-trading-journal",
-  "version": "1.0.24",
+  "version": "1.0.25",
   "description": "Mike's Trading Journal — desktop app",
   "main": "electron/main.js",
   "scripts": {
@@ -72,7 +72,11 @@
             "arm64"
           ]
         }
-      ]
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "dmg": {
       "title": "Trading Journal",
@@ -88,6 +92,7 @@
       "repo": "trading-journal",
       "releaseType": "release"
     },
-    "npmRebuild": true
+    "npmRebuild": true,
+    "afterSign": "build/notarize.cjs"
   }
 }

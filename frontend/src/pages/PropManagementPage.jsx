@@ -69,7 +69,11 @@ export default function PropManagementPage() {
   const markPassed = async () => {
     const P = PRODUCTS[acct.product];
     const from = P.phases[acct.phaseIndex]; const to = P.phases[Math.min(acct.phaseIndex + 1, P.phases.length - 1)];
-    if (!window.confirm(`Mark ${from.label} as passed?\n\nOnly do this once the FTMO dashboard says so. The tracker resets to a fresh ${fmtUSD(acct.size)} for ${to.label}, and the journal gets an adjusting entry back to ${fmtUSD(acct.size)}.`)) return;
+    const shortDays = state.minDays > 0 && state.tradingDays < state.minDays;
+    const shortTarget = state.targetAmt != null && !state.targetHit;
+    const warn = (shortDays ? `FTMO needs ${state.minDays} trading days in this phase. The tracker has ${state.tradingDays}.\n` : '')
+      + (shortTarget ? `The tracker shows ${fmtUSD(state.closedProfit)} of the ${fmtUSD(state.targetAmt)} target.\n` : '');
+    if (!window.confirm(`${warn ? 'NOT READY BY THE TRACKER\'S COUNT\n' + warn + '\n' : ''}Mark ${from.label} as passed?\n\nOnly do this once the FTMO dashboard says so. The tracker resets to a fresh ${fmtUSD(acct.size)} for ${to.label}, and the journal gets an adjusting entry back to ${fmtUSD(acct.size)}.`)) return;
     setPhaseBusy(true); setPhaseMsg(null);
     let journalNote = 'no journal account linked';
     if (acct.journalAccountId) {
@@ -176,7 +180,7 @@ export default function PropManagementPage() {
             <div className="ml-auto flex items-center gap-2">
               <span className={`px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wide ${acct.failed ? 'bg-terminal-red/15 text-terminal-red' : 'bg-terminal-border text-terminal-text'}`}>{acct.failed ? 'failed' : state.phase.label}</span>
               {!acct.failed && state.phase.target != null && (
-                <button onClick={markPassed} disabled={phaseBusy} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-terminal-green/60 text-xs font-mono text-terminal-green hover:bg-terminal-green/10 disabled:opacity-50"><Flag className="w-3.5 h-3.5" />{phaseBusy ? 'Saving...' : `Mark ${state.phase.label.split(' (')[0]} passed`}</button>
+                <button onClick={markPassed} disabled={phaseBusy} title={state.passed ? 'Target and trading days are met' : `Needs the target and ${state.minDays} trading days. You have ${state.tradingDays}.`} className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded border text-xs font-mono disabled:opacity-50 ${state.passed ? 'border-terminal-green/60 text-terminal-green hover:bg-terminal-green/10' : 'border-terminal-muted text-terminal-muted hover:text-terminal-text'}`}><Flag className="w-3.5 h-3.5" />{phaseBusy ? 'Saving...' : `Mark ${state.phase.label.split(' (')[0]} passed`}</button>
               )}
               {!acct.journalAccountId && (
                 <button onClick={linkJournal} disabled={linkBusy} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-amber-500/60 text-xs font-mono text-amber-400 hover:bg-amber-500/10 disabled:opacity-50">{linkBusy ? 'Linking...' : 'Link to journal'}</button>
