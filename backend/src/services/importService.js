@@ -79,13 +79,73 @@ function parseXLSX(buffer) {
   return raw;
 }
 
+// ─── FTMO client-area "Trading Journal" export (.csv or .xlsx, identical layout) ───────────────
+// Header: Ticket,Open,Type,Volume,Symbol,Price,SL,TP,Close,Price,Swap,Commissions,Profit,Pips,Trade duration…
+// Two columns are both called "Price" (entry, then exit), so it MUST be read by position.
+// No account number anywhere in the file. Times are FTMO's server clock (EET/EEST), which is always
+// one hour ahead of Prague (CET/CEST); FTMO's trading day resets at Prague midnight, so every time
+// is shifted back one hour and stored as Prague time.
+const FTMO_EXPORT_HEAD = ['ticket', 'open', 'type', 'volume', 'symbol', 'price', 'sl', 'tp', 'close', 'price', 'swap', 'commissions', 'profit'];
+const FTMO_EXPORT_KEYS = ['Ticket', 'Open Time', 'Type', 'Volume', 'Symbol', 'Open Price', 'SL', 'TP', 'Close Time', 'Close Price', 'Swaps', 'Commission', 'Profit', 'Pips', 'Duration (s)'];
+
+function isFtmoExportHeader(headerRow) {
+  const h = (headerRow || []).map(c => String(c ?? '').trim().toLowerCase());
+  return FTMO_EXPORT_HEAD.every((name, i) => h[i] === name);
+}
+
+function serverToPrague(v) {
+  const m = String(v ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return v ? String(v).trim() : null;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) - 3600 * 1000);
+  return d.toISOString().replace('T', ' ').slice(0, 19);
+}
+
+function ftmoExportRows(arrays) {
+  return arrays.slice(1)
+    .filter(r => r && r.some(c => String(c ?? '').trim() !== ''))
+    .map(r => {
+      const o = {};
+      FTMO_EXPORT_KEYS.forEach((k, i) => { o[k] = r[i] === undefined || r[i] === null ? '' : r[i]; });
+      o['Ticket'] = String(o['Ticket']).trim();
+      o['Open Time'] = serverToPrague(o['Open Time']);
+      o['Close Time'] = serverToPrague(o['Close Time']);
+      return o;
+    });
+}
+
+// True when rows came from the FTMO export (used by the routes to enforce the FTMO rules).
+function isFtmoExportRows(rows) {
+  return rows.length > 0 && 'SL' in rows[0] && 'TP' in rows[0] && 'Duration (s)' in rows[0] && !('Login' in rows[0]);
+}
+
 // ─── Parse any file (auto-detect CSV vs XLSX) ────────────────────────────────
 function parseFile(buffer, originalname) {
   const ext = (originalname || '').toLowerCase();
   if (ext.endsWith('.xlsx') || ext.endsWith('.xls')) {
+    const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
+    const arrays = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: true });
+    if (isFtmoExportHeader(arrays[0])) return ftmoExportRows(arrays);
     return parseXLSX(buffer);
   }
+  const arrays = parse(buffer.toString('utf-8'), { columns: false, skip_empty_lines: true, trim: true, relax_column_count: true });
+  if (isFtmoExportHeader(arrays[0])) return ftmoExportRows(arrays);
   return parseCSV(buffer);
+}
+
+// ─── FTMO import guard ────────────────────────────────────────────────────────
+// The export names no account, so: an FTMO account must be picked, and the file name must contain
+// that account's login. Throws with a plain-English message otherwise.
+function assertFtmoImport(rows, filename, accountName) {
+  if (!isFtmoExportRows(rows)) throw new Error('This is not the FTMO Trading Journal export. Download it from the FTMO client area (Trading Journal → Export).');
+  if (!accountName) throw new Error('Pick which FTMO account these trades belong to. The file does not say.');
+  const acct = getDb().prepare('SELECT name, broker, broker_account_id FROM accounts WHERE name = ?').get(accountName);
+  if (!acct) throw new Error(`Account "${accountName}" does not exist.`);
+  if (acct.broker !== 'FTMO') throw new Error(`"${accountName}" is not an FTMO account.`);
+  const logins = String(acct.broker_account_id || '').split(',').map(x => x.trim()).filter(Boolean);
+  if (!logins.length) throw new Error(`"${accountName}" has no FTMO login saved. Add it in the login box on the Prop Management page, then import again.`);
+  const hit = logins.find(l => String(filename || '').includes(l));
+  if (!hit) throw new Error(`Rename the file so it contains this account's login (${logins.join(' or ')}), for example "${logins[logins.length - 1]}.csv". The file is called "${filename}", so there is no way to confirm it belongs to ${accountName}.`);
+  return { account: acct.name, login: hit };
 }
 
 // ─── Auto-detect broker Login IDs from raw rows ───────────────────────────────
@@ -473,6 +533,14 @@ function applyMapping(rows, mapping, loginToAccount) {
       }
     }
 
+    // R multiple from the stop, when the exported stop is still on the risk side of entry
+    // (a stop trailed to break-even or into profit no longer measures the original risk).
+    if (trade.r_multiple == null && trade.entry_price && trade.exit_price && trade.stop_loss) {
+      const dir = trade.position === 'Short' ? -1 : 1;
+      const risk = (trade.entry_price - trade.stop_loss) * dir;
+      if (risk > 0) trade.r_multiple = Math.round(((trade.exit_price - trade.entry_price) * dir / risk) * 100) / 100;
+    }
+
     // Duration
     if (trade.entry_datetime && trade.exit_datetime) {
       try {
@@ -501,10 +569,16 @@ function applyMapping(rows, mapping, loginToAccount) {
 // ─── Detect duplicates against DB ────────────────────────────────────────────
 function detectDuplicates(trades) {
   const db = getDb();
-  const existing = new Set(
-    db.prepare('SELECT trade_id FROM trades').all().map(r => r.trade_id)
+  const existing = new Map(
+    db.prepare('SELECT trade_id, entry_datetime, exit_datetime FROM trades').all().map(r => [r.trade_id, r])
   );
-  return trades.map(t => ({ ...t, _isDuplicate: existing.has(String(t.trade_id)) }));
+  return trades.map(t => {
+    const row = existing.get(String(t.trade_id));
+    // A stored row with no dates at all is a broken earlier import (it can never show on the calendar).
+    // If this file has the dates, repair that row instead of skipping the trade as a duplicate.
+    const repair = !!row && !row.entry_datetime && !row.exit_datetime && !!(t.entry_datetime || t.exit_datetime);
+    return { ...t, _isDuplicate: !!row && !repair, _isRepair: repair };
+  });
 }
 
 // ─── Deduplicate raw rows (handles EightCap Excel ~58x duplication bug) ───────
@@ -687,6 +761,7 @@ function commitImport(rows) {
 
   const errors = [];
   let imported = 0;
+  let repaired = 0;
 
   const importMany = db.transaction((rows) => {
     rows.forEach((row, idx) => {
@@ -720,7 +795,17 @@ function commitImport(rows) {
           status:        row.status        || 'OPEN',
           lessons:       row.lessons       || null,
         };
-        insert.run(clean);
+        if (row._isRepair) {
+          // Replace the broken row's imported fields; keep its id, notes, grade and strategy.
+          db.prepare(`UPDATE trades SET account=@account, symbol=@symbol, market=@market, position=@position,
+            entry_datetime=@entry_datetime, entry_price=@entry_price, lot_size=@lot_size, take_profit=@take_profit,
+            stop_loss=@stop_loss, exit_price=@exit_price, exit_datetime=@exit_datetime, commission=@commission,
+            pnl=@pnl, r_multiple=COALESCE(@r_multiple, r_multiple), duration=@duration, weekday=@weekday,
+            status=@status, updated_at=datetime('now') WHERE trade_id=@trade_id`).run(clean);
+          repaired++;
+        } else {
+          insert.run(clean);
+        }
         imported++;
       } catch (e) {
         errors.push({ row: idx + 1, error: e.message });
@@ -729,7 +814,7 @@ function commitImport(rows) {
   });
 
   importMany(newRows);
-  return { imported, errors, skipped: rows.filter(r => r._isDuplicate).length };
+  return { imported, repaired, errors, skipped: rows.filter(r => r._isDuplicate).length };
 }
 
 // ─── Exports ──────────────────────────────────────────────────────────────────
@@ -755,6 +840,7 @@ module.exports = {
   previewImport, commitImport, commitAccountActivity,
   extractEightCapBalanceRows,
   detectLoginsFromRows, resolveAccount,
+  isFtmoExportRows, assertFtmoImport,
   getDefaultMapping, getTradingViewMapping, getPresetMappings,
   getSavedMappings, saveMapping,
   EIGHTCAP_MT5_MAPPING, EIGHTCAP_TV_MAPPING,

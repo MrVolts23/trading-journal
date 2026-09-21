@@ -37,13 +37,21 @@ const TV_BALANCE_HISTORY_PRESET = {
   mode:   'tv_balance_history',
 };
 
-// FTMO MT5 History Report — same layout as the EightCap report (FTMO is an MT5 broker too).
-// Login = the FTMO account number; it matches the journal account created in Settings/Prop Management.
+// FTMO client-area "Trading Journal" export (.csv or .xlsx). The backend reads it by position
+// (two columns are both named "Price"), shifts server time to Prague, and hands back these names.
+// The file names no account: one must be picked, and the file name must contain that account's login.
 const FTMO_MT5_PRESET = {
-  ...EIGHTCAP_MT5_PRESET,
   broker: 'FTMO',
-  label: 'FTMO MT5 (History Report)',
+  label: 'FTMO (Trading Journal export)',
+  fields: {
+    ...EIGHTCAP_MT5_PRESET.fields,
+    stop_loss:   'SL',
+    take_profit: 'TP',
+  },
+  transforms: EIGHTCAP_MT5_PRESET.transforms,
+  skipIfEmpty: ['Type', 'Symbol'],
 };
+const FTMO_LAST_ACCOUNT_KEY = 'ftmo_import_last_account';
 
 const PRESETS = {
   eightcap_mt5:         EIGHTCAP_MT5_PRESET,
@@ -123,9 +131,17 @@ export default function ImportPage() {
     getAccounts().then(setAccounts).catch(() => {});
   }, []);
 
+  const ftmoAccounts = accounts.filter(a => a.broker === 'FTMO');
+  const ftmoLogins = (a) => String(a?.broker_account_id || '').split(',').map(x => x.trim()).filter(Boolean);
+
   const handleBrokerChange = (b) => {
     setBroker(b);
-    setAccountOverride('');
+    let remembered = '';
+    if (b === 'ftmo_mt5') {
+      try { remembered = localStorage.getItem(FTMO_LAST_ACCOUNT_KEY) || ''; } catch (_) {}
+      if (!ftmoAccounts.some(a => a.name === remembered)) remembered = ftmoAccounts.length === 1 ? ftmoAccounts[0].name : '';
+    }
+    setAccountOverride(remembered);
     setDetectedLogins([]);
     setAutoAccounts({});
     if (PRESETS[b]?.fields) {
@@ -136,14 +152,30 @@ export default function ImportPage() {
   };
 
   const handleFileUpload = async (f) => {
-    setFile(f);
     setError('');
+    // FTMO: the export names no account. Refuse the file unless an FTMO account is picked AND the
+    // file name carries that account's login, so trades can never land in the wrong challenge.
+    if (broker === 'ftmo_mt5') {
+      const acct = ftmoAccounts.find(a => a.name === accountOverride);
+      if (!acct) { setError('Pick which FTMO account these trades belong to first. The file does not say.'); return; }
+      const logins = ftmoLogins(acct);
+      if (!logins.length) { setError(`"${acct.name}" has no FTMO login saved. Add it in the login box on the Prop Management page, then import again.`); return; }
+      if (!logins.some(l => f.name.includes(l))) {
+        setError(`Rename the file so it contains this account's login (${logins.join(' or ')}), for example "${logins[logins.length - 1]}.csv". This one is called "${f.name}", so there is no way to confirm it belongs to ${acct.name}. Nothing was imported.`);
+        return;
+      }
+      try { localStorage.setItem(FTMO_LAST_ACCOUNT_KEY, acct.name); } catch (_) {}
+    }
+    setFile(f);
     setUploadId(null);
     setDetectedLogins([]);
     setAutoAccounts({});
     setUploading(true);
     try {
       const result = await uploadImportFile(f);
+      if (broker === 'ftmo_mt5' && !result.isFtmoExport) {
+        throw new Error('this is not the FTMO Trading Journal export. Download it from the FTMO client area: Trading Journal, then Export.');
+      }
       setUploadId(result.uploadId);
       setCsvColumns(result.columns);
       if (PRESETS[broker]?.fields) {
@@ -261,7 +293,7 @@ export default function ImportPage() {
       <div>
         <h1 className="text-lg font-mono font-semibold text-terminal-text">Import Trades</h1>
         <p className="text-xs font-mono text-terminal-muted mt-1">
-          Supports EightCap MT5 Trades Report (.xlsx), TradingView Paper Trading (.csv), and custom formats
+          Supports EightCap MT5 Trades Report (.xlsx), the FTMO Trading Journal export, TradingView Paper Trading (.csv), and custom formats
         </p>
       </div>
 
@@ -290,10 +322,10 @@ export default function ImportPage() {
                 },
                 {
                   key: 'ftmo_mt5',
-                  label: 'FTMO MT5',
-                  sub: 'History Report (.xlsx) from the FTMO terminal',
+                  label: 'FTMO',
+                  sub: 'Trading Journal export (.csv or .xlsx) from the FTMO client area',
                   icon: Database,
-                  tip: 'Matches your FTMO account by login · fills Prop Management',
+                  tip: 'Pick the account · file name must carry its login · fills Prop Management',
                 },
                 {
                   key: 'tv_balance_history',
@@ -367,16 +399,13 @@ export default function ImportPage() {
             <div className="card p-4 border border-terminal-green/20 bg-green-950/10 space-y-2">
               <div className="flex items-center gap-2">
                 <Info className="w-4 h-4 text-terminal-green flex-shrink-0" />
-                <div className="text-xs font-mono text-terminal-green font-semibold">Auto Account Detection</div>
+                <div className="text-xs font-mono text-terminal-green font-semibold">{broker === 'ftmo_mt5' ? 'Which FTMO account' : 'Auto Account Detection'}</div>
               </div>
               {broker === 'ftmo_mt5' ? (
                 <div className="text-xs font-mono text-terminal-muted leading-relaxed space-y-1">
-                  <div>In the FTMO MT5 terminal: Toolbox → History → right-click → Report → save as Excel. The Login column is your FTMO account number.</div>
-                  <div>Trades file under the FTMO journal account that carries that login. Every phase gets a new login at FTMO, so add each phase's login to the account on the Prop Management page before importing that phase.</div>
-                  <div>After import, the Prop Management day log is filled from these trades. Balance rows in the report are ignored, since the account size and phase resets are already handled.</div>
-                  {accounts.filter(a => a.broker === 'FTMO').length > 0 && (
-                    <div className="pt-1">Known FTMO accounts: {accounts.filter(a => a.broker === 'FTMO').map(a => `${a.name}${a.broker_account_id ? ` [${a.broker_account_id}]` : ' [no login yet]'}`).join(' · ')}</div>
-                  )}
+                  <div>In the FTMO client area open the account, go to Trading Journal, and export as CSV or Excel. Both work the same.</div>
+                  <div className="text-terminal-text">The file does not name the account. Pick it below, and rename the download so it contains that account's login, for example <span className="text-terminal-amber">{ftmoLogins(ftmoAccounts.find(a => a.name === accountOverride))[0] || '551108938'}.csv</span>. A file without the login is refused.</div>
+                  <div>Times are moved from FTMO's server clock to Prague time, since FTMO's trading day resets at Prague midnight. Stop and target come through, so R fills in. After import the Prop Management day log is refilled.</div>
                 </div>
               ) : (
               <div className="text-xs font-mono text-terminal-muted leading-relaxed">
@@ -385,6 +414,23 @@ export default function ImportPage() {
                 accounts that share the same export file.
               </div>
               )}
+              {broker === 'ftmo_mt5' ? (
+                ftmoAccounts.length === 0 ? (
+                  <div className="text-xs font-mono text-terminal-amber">No FTMO account yet. Create one in Settings, Add Account, broker FTMO.</div>
+                ) : (
+                  <select
+                    value={accountOverride}
+                    onChange={e => { setAccountOverride(e.target.value); setError(''); }}
+                    className="select-field text-xs font-mono w-96 max-w-full"
+                  >
+                    <option value="">— Pick the FTMO account (required) —</option>
+                    {ftmoAccounts.map(a => (
+                      <option key={a.name} value={a.name}>{a.name}{ftmoLogins(a).length ? '' : ' · no login saved'}</option>
+                    ))}
+                  </select>
+                )
+              ) : (
+              <>
               <div className="text-[10px] font-mono text-terminal-dim">
                 Override below if you want to assign all trades to a specific account instead.
               </div>
@@ -398,6 +444,8 @@ export default function ImportPage() {
                   <option key={a.name} value={a.name}>{a.name}</option>
                 ))}
               </select>
+              </>
+              )}
             </div>
           )}
 
@@ -448,7 +496,7 @@ export default function ImportPage() {
               type="file"
               accept=".xlsx,.xls,.csv"
               className="hidden"
-              onChange={e => { if (e.target.files[0]) handleFileUpload(e.target.files[0]); }}
+              onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) handleFileUpload(f); }}
             />
           </div>
         </div>
@@ -723,6 +771,11 @@ export default function ImportPage() {
                 <div className="stat-label mt-1">Errors</div>
               </div>
             </div>
+            {importResult.repaired > 0 && (
+              <div className="text-xs font-mono text-terminal-green bg-green-950/30 border border-terminal-green/30 px-4 py-2 rounded w-full max-w-sm text-center">
+                {importResult.repaired} earlier import{importResult.repaired === 1 ? '' : 's'} had no dates and {importResult.repaired === 1 ? 'was' : 'were'} repaired, so {importResult.repaired === 1 ? 'it now shows' : 'they now show'} on the calendar.
+              </div>
+            )}
             {importResult.propSync?.length > 0 && importResult.propSync.map(ps => (
               <div key={ps.name} className="text-xs font-mono text-terminal-green bg-green-950/30 border border-terminal-green/30 px-4 py-2 rounded w-full max-w-sm text-center">
                 Prop Management filled for {ps.name}: {ps.synced} trades across {ps.days} day{ps.days === 1 ? '' : 's'}.

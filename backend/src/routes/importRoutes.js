@@ -87,7 +87,7 @@ router.post('/upload', async (req, res) => {
     });
 
     console.log('[upload] stored', uploadId, '—', rows.length, 'rows,', columns.length, 'columns', detectedLogins.length ? `| logins: ${detectedLogins.join(', ')}` : '');
-    res.json({ uploadId, filename, size: buffer.length, columns, rowCount: rows.length, detectedLogins });
+    res.json({ uploadId, filename, size: buffer.length, columns, rowCount: rows.length, detectedLogins, isFtmoExport: importService.isFtmoExportRows(rows) });
   } catch (e) {
     console.error('[upload] error:', e.message, e.stack?.split('\n')[1]);
     const status = e.status || 400;
@@ -113,6 +113,8 @@ router.post('/preview', (req, res) => {
     console.log('[preview] uploadId:', uploadId, '| mode:', mapping.mode || 'standard', '| fromDate:', importFromDate || 'all', '| account:', account || 'default');
 
     const rows    = importService.parseFile(buffer, session.filename);
+    // FTMO: the export names no account, so require a picked FTMO account AND its login in the file name.
+    if (mapping.broker === 'FTMO') importService.assertFtmoImport(rows, session.filename, account || null);
     const preview = importService.previewImport(rows, mapping, importFromDate || null, account || null);
     console.log('[preview] new:', preview.new_count, '| dups:', preview.duplicate_count, '| noise:', preview.noise_count);
 
