@@ -66,7 +66,7 @@ Skills → Edges → Risk → Trainer → Library → Backtest (placeholder). (E
 
 ## To do
 
-1. Ship (commit + release) when Mike says "ship it".
+1. ~~Ship~~ v1.0.27 published 2026-10-05 (notarized). Verify the installed app picked it up and that the first-start migrations ran cleanly on the real journal.
 2. ~~Move risk out of the Edge rulebook~~ (done) → add risk settings to Backtest (per test) and the live desk (per account).
 3. Per-chart 1-2-3 sets for Edge B (15-minute context set + 3-minute entry set) — after the two timing questions are answered.
 4. Market-condition prerequisites section on the Edge (time-of-day rules etc.).

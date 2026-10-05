@@ -148,64 +148,82 @@ function AccountSlot({ index, accounts, riskPct, ceiling }) {
 
 const LS_SESSION = 'rr_session_trades'; // localStorage key for the live session trades
 
-// ── Live Session Tracker ─────────────────────────────────────────────────────
-// Manual cumulative-trade tool for live trading. COMPOUNDING 1R: each trade's 1R =
-// risk% × the balance BEFORE that trade. Enter the $ result, it reverse-calcs the R.
+// ── Session Tracker (Live or Scenario) ───────────────────────────────────────
+// Manual cumulative-trade tool. COMPOUNDING 1R: each trade's 1R = risk% × the balance BEFORE that
+// trade (or a fixed $). Enter the $ or R result. "Close trading day" files the session as a day below;
+// a day can be reopened to fix its trades, or deleted. Live and Scenario keep separate sessions and days.
 // Fully standalone — never touches Trade Log or Journal.
-function SessionTracker({ balance, riskPct, fixedR = null }) {
-  const [trades, setTrades] = useState(() => loadLS(LS_SESSION, []));
+function SessionTracker({ mode, baseBalance, riskPct, fixedR = null }) {
+  const KEY_TRADES = mode === 'live' ? LS_SESSION : 'rr_session_trades_sim';
+  const KEY_DAYS   = mode === 'live' ? 'rr_days_live' : 'rr_days_sim';
+  const [trades, setTrades] = useState(() => loadLS(KEY_TRADES, []));
+  const [days,   setDays]   = useState(() => loadLS(KEY_DAYS, []));
+  const [editingDay, setEditingDay] = useState(null);   // index of the day whose trades are in the box, or null
   const [input,  setInput]  = useState('');
-  // Enter the result in dollars, or in R (Mike, 2026-10-05): in R mode the dollars are worked out from the
-  // NEXT trade's 1R (risk% of the balance as it stands now), so backtest results in R drop straight in.
-  const [mode,   setMode]   = useState(() => loadLS('rm_session_input_mode', 'usd'));
-  useEffect(() => { localStorage.setItem('rm_session_input_mode', JSON.stringify(mode)); }, [mode]);
+  const [inMode, setInMode] = useState(() => loadLS('rm_session_input_mode', 'usd'));   // 'usd' | 'r'
+  const [armDel, setArmDel] = useState(null);
 
-  useEffect(() => { localStorage.setItem(LS_SESSION, JSON.stringify(trades)); }, [trades]);
+  // switching Live <-> Scenario swaps the stored session and days
+  useEffect(() => { setTrades(loadLS(KEY_TRADES, [])); setDays(loadLS(KEY_DAYS, [])); setEditingDay(null); setInput(''); }, [KEY_TRADES, KEY_DAYS]);
+  useEffect(() => { localStorage.setItem(KEY_TRADES, JSON.stringify(trades)); }, [trades, KEY_TRADES]);
+  useEffect(() => { localStorage.setItem(KEY_DAYS, JSON.stringify(days)); }, [days, KEY_DAYS]);
+  useEffect(() => { localStorage.setItem('rm_session_input_mode', JSON.stringify(inMode)); }, [inMode]);
 
-  const B0   = Math.max(0, parseFloat(balance) || 0);
   const risk = Math.max(0, parseFloat(riskPct) || 0);
-
-  // Walk trades, compounding the balance so 1R grows/shrinks with it
-  let running = B0;
-  const rows = trades.map((amt, i) => {
-    const oneR = fixedR != null ? fixedR : running * (risk / 100);   // 1R off the balance BEFORE this trade (or the fixed $)
-    const r    = oneR > 0 ? amt / oneR : 0;
-    running   += amt;                              // balance compounds
-    return { i, amt, oneR, r, balanceAfter: running };
-  });
-  const sessionDollar  = running - B0;
-  const sessionR       = rows.reduce((s, x) => s + x.r, 0);
-  const currentBalance = running;
-  const wins    = rows.filter(r => r.amt > 0).length;
-  const losses  = rows.filter(r => r.amt < 0).length;
-  const decided = wins + losses; // breakeven trades (amt === 0) excluded from win rate
+  const oneRFor = (bal) => (fixedR != null ? fixedR : bal * (risk / 100));
+  // walk a list of trades from a starting balance, compounding
+  const walk = (start, list) => {
+    let running = start;
+    const rows = list.map((amt, i) => { const oneR = oneRFor(running); const r = oneR > 0 ? amt / oneR : 0; running += amt; return { i, amt, oneR, r, balanceAfter: running }; });
+    const wins = rows.filter(r => r.amt > 0).length, losses = rows.filter(r => r.amt < 0).length;
+    return { rows, end: running, pnl: running - start, r: rows.reduce((s, x) => s + x.r, 0), wins, losses };
+  };
+  // Scenario days chain: each day starts where the last one ended. Live days start from the balance recorded when the day was opened.
+  const base = Math.max(0, parseFloat(baseBalance) || 0);
+  const dayStarts = [];
+  { let run = base; for (const d of days) { const st = mode === 'live' ? (d.start ?? run) : run; dayStarts.push(st); run = walk(st, d.trades).end; } }
+  const sessionStart = editingDay != null ? dayStarts[editingDay] : (mode === 'live' ? base : (days.length ? walk(dayStarts[days.length - 1], days[days.length - 1].trades).end : base));
+  const B0 = sessionStart;
+  const cur = walk(B0, trades);
+  const sessionDollar = cur.pnl, sessionR = cur.r, currentBalance = cur.end, wins = cur.wins, losses = cur.losses;
+  const decided = wins + losses;
   const winRate = decided > 0 ? (wins / decided) * 100 : 0;
+  const nextOneR = oneRFor(currentBalance);
 
-  const nextOneR = fixedR != null ? fixedR : currentBalance * (risk / 100);     // what 1R is worth for the next trade
   const addTrade = () => {
     const v = parseFloat(input);
     if (isNaN(v)) { setInput(''); return; }
-    const amt = mode === 'r' ? Math.round(v * nextOneR * 100) / 100 : v;
-    setTrades(t => [...t, amt]);
+    setTrades(t => [...t, inMode === 'r' ? Math.round(v * nextOneR * 100) / 100 : v]);
     setInput('');
   };
+  const closeDay = () => {
+    if (!trades.length) return;
+    setDays(d => [...d, { n: d.length + 1, closed: new Date().toISOString(), start: B0, trades }]);
+    setTrades([]);
+  };
+  const openDay = (i) => { setEditingDay(i); setTrades(days[i].trades); setInput(''); };
+  const saveDay = () => { setDays(d => d.map((x, i) => (i === editingDay ? { ...x, trades } : x))); setEditingDay(null); setTrades(loadLS(KEY_TRADES + '_parked', [])); localStorage.removeItem(KEY_TRADES + '_parked'); };
+  const cancelEdit = () => { setEditingDay(null); setTrades(loadLS(KEY_TRADES + '_parked', [])); localStorage.removeItem(KEY_TRADES + '_parked'); };
+  const startEdit = (i) => { localStorage.setItem(KEY_TRADES + '_parked', JSON.stringify(trades)); openDay(i); };
+  const deleteDay = (i) => { if (armDel !== i) { setArmDel(i); return; } setArmDel(null); setDays(d => d.filter((_, k) => k !== i).map((x, k) => ({ ...x, n: k + 1 }))); if (editingDay === i) cancelEdit(); };
 
   const fmtUSD = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('en-US');
   const fmtR   = (n) => (n >= 0 ? '+' : '') + n.toFixed(2) + 'R';
   const posNeg = (n) => n > 0 ? 'text-terminal-green' : n < 0 ? 'text-terminal-red' : 'text-terminal-text';
+  const dayLabel = (d, i) => (mode === 'live' ? `${d.closed ? new Date(d.closed).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : `Day ${i + 1}`}` : `Trading Day ${i + 1}`);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="stat-label">Live Session Tracker</div>
-        {trades.length > 0 && (
+        <div className="stat-label">{mode === 'live' ? 'Live' : 'Scenario'} Session Tracker{editingDay != null ? ` — editing ${dayLabel(days[editingDay], editingDay)}` : ''}</div>
+        {editingDay == null && trades.length > 0 && (
           <button onClick={() => setTrades([])}
             className="text-[10px] font-mono text-terminal-dim hover:text-terminal-red transition-colors uppercase tracking-wide">Reset session</button>
         )}
       </div>
 
-      {/* Summary — derived from RR Calculator balance + manual entries */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-4">
         <div className="card p-4">
           <div className="stat-label mb-1">Session P&amp;L</div>
           <div className={`text-2xl font-mono font-bold ${posNeg(sessionDollar)}`}>{fmtUSD(sessionDollar)}</div>
@@ -218,18 +236,13 @@ function SessionTracker({ balance, riskPct, fixedR = null }) {
         </div>
         <div className="card p-4">
           <div className="stat-label mb-1">Win / Loss</div>
-          <div className="flex items-center justify-between gap-2">
-            <div className="space-y-0.5 font-mono text-sm">
-              <div><span className="text-terminal-dim">W=</span> <span className="text-terminal-green font-bold">{wins}</span></div>
-              <div><span className="text-terminal-dim">L=</span> <span className="text-terminal-red font-bold">{losses}</span></div>
-            </div>
-            <div className="text-right">
-              <div className="text-2xl font-mono font-bold text-terminal-text">{decided > 0 ? `${winRate.toFixed(0)}%` : '—'}</div>
-              <div className="text-[10px] font-mono text-terminal-dim">win rate</div>
-            </div>
+          <div className="text-sm font-mono space-y-0.5">
+            <div>W= <span className="text-terminal-green font-semibold">{wins}</span></div>
+            <div>L= <span className="text-terminal-red font-semibold">{losses}</span></div>
           </div>
+          <div className="text-[10px] font-mono text-terminal-dim mt-0.5">{decided > 0 ? `${winRate.toFixed(0)}%` : '—'} win rate</div>
         </div>
-        <div className="card p-4 border border-terminal-amber/30">
+        <div className="card p-4 border-terminal-amber/40">
           <div className="stat-label mb-1">Current Balance</div>
           <div className="text-2xl font-mono font-bold text-terminal-amber">{fmtUSD(currentBalance)}</div>
           <div className="text-[10px] font-mono text-terminal-dim mt-0.5">started {fmtUSD(B0)}</div>
@@ -238,31 +251,40 @@ function SessionTracker({ balance, riskPct, fixedR = null }) {
 
       {/* Manual trade entry */}
       <div className="card p-4 space-y-3">
-        {B0 <= 0 && <div className="text-[10px] font-mono text-terminal-red">Enter an account balance in the RR Calculator to begin.</div>}
+        {base <= 0 && <div className="text-[10px] font-mono text-terminal-red">{mode === 'live' ? 'No live balance yet — pick an account above or wait for the balance to load.' : 'Enter an account balance above to begin.'}</div>}
         <div className="flex items-end gap-2">
           <div className="flex-1 space-y-1">
             <div className="flex items-center gap-2">
-              <label className="text-[10px] font-mono text-terminal-muted uppercase tracking-wide block">Trade result — {mode === 'r' ? 'R' : '$'} (negative for a loss)</label>
+              <label className="text-[10px] font-mono text-terminal-muted uppercase tracking-wide block">Trade result — {inMode === 'r' ? 'R' : '$'} (negative for a loss)</label>
               <div className="flex items-center rounded border border-terminal-border overflow-hidden">
-                <button onClick={() => { setMode('usd'); setInput(''); }} className={`px-2 py-0.5 text-[10px] font-mono ${mode === 'usd' ? 'bg-terminal-amber/15 text-terminal-amber' : 'text-terminal-muted hover:text-terminal-text'}`}>$</button>
-                <button onClick={() => { setMode('r'); setInput(''); }} className={`px-2 py-0.5 text-[10px] font-mono border-l border-terminal-border ${mode === 'r' ? 'bg-terminal-amber/15 text-terminal-amber' : 'text-terminal-muted hover:text-terminal-text'}`}>R</button>
+                <button onClick={() => { setInMode('usd'); setInput(''); }} className={`px-2 py-0.5 text-[10px] font-mono ${inMode === 'usd' ? 'bg-terminal-amber/15 text-terminal-amber' : 'text-terminal-muted hover:text-terminal-text'}`}>$</button>
+                <button onClick={() => { setInMode('r'); setInput(''); }} className={`px-2 py-0.5 text-[10px] font-mono border-l border-terminal-border ${inMode === 'r' ? 'bg-terminal-amber/15 text-terminal-amber' : 'text-terminal-muted hover:text-terminal-text'}`}>R</button>
               </div>
-              {mode === 'r' && <span className="text-[10px] font-mono text-terminal-dim">1R for the next trade = {fmtUSD(nextOneR)}{input && !isNaN(parseFloat(input)) ? ` → ${fmtUSD(parseFloat(input) * nextOneR)}` : ''}</span>}
+              {inMode === 'r' && <span className="text-[10px] font-mono text-terminal-dim">1R for the next trade = {fmtUSD(nextOneR)}{input && !isNaN(parseFloat(input)) ? ` → ${fmtUSD(parseFloat(input) * nextOneR)}` : ''}</span>}
             </div>
             <div className="relative">
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-mono text-terminal-muted">{mode === 'r' ? 'R' : '$'}</span>
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-mono text-terminal-muted">{inMode === 'r' ? 'R' : '$'}</span>
               <input type="number" step="any" value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') addTrade(); }}
-                placeholder={mode === 'r' ? 'e.g. 2.5 or -1' : 'e.g. 500 or -250'}
+                placeholder={inMode === 'r' ? 'e.g. 2.5 or -1' : 'e.g. 500 or -250'}
                 className="input-field text-sm w-full pl-6 font-mono" />
             </div>
           </div>
-          <button onClick={addTrade} disabled={B0 <= 0}
+          <button onClick={addTrade} disabled={base <= 0}
             className="btn-primary px-5 py-2 disabled:opacity-40 whitespace-nowrap">Add Trade</button>
+          {editingDay == null ? (
+            <button onClick={closeDay} disabled={!trades.length}
+              className="px-4 py-2 rounded border border-terminal-border text-xs font-mono text-terminal-text hover:border-terminal-amber hover:text-terminal-amber disabled:opacity-40 whitespace-nowrap">Close trading day</button>
+          ) : (
+            <>
+              <button onClick={saveDay} className="px-4 py-2 rounded border border-terminal-amber text-xs font-mono text-terminal-amber whitespace-nowrap">Save day</button>
+              <button onClick={cancelEdit} className="px-3 py-2 rounded border border-terminal-border text-xs font-mono text-terminal-muted whitespace-nowrap">Cancel</button>
+            </>
+          )}
         </div>
 
-        {rows.length > 0 && (
+        {cur.rows.length > 0 && (
           <div className="overflow-hidden rounded border border-terminal-border">
             <table className="w-full text-xs font-mono">
               <thead className="bg-terminal-surface text-terminal-dim">
@@ -276,7 +298,7 @@ function SessionTracker({ balance, riskPct, fixedR = null }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(row => (
+                {cur.rows.map(row => (
                   <tr key={row.i} className="border-t border-terminal-border/40 group">
                     <td className="px-3 py-1.5 text-terminal-dim">{row.i + 1}</td>
                     <td className={`px-3 py-1.5 text-right font-semibold ${posNeg(row.amt)}`}>{fmtUSD(row.amt)}</td>
@@ -295,6 +317,52 @@ function SessionTracker({ balance, riskPct, fixedR = null }) {
           </div>
         )}
       </div>
+
+      {/* Closed trading days */}
+      {days.length > 0 && (
+        <div className="card p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="stat-label">Trading days ({mode === 'live' ? 'live' : 'scenario'})</div>
+            <div className="text-[10px] font-mono text-terminal-dim">
+              {(() => { const tot = days.reduce((a, d, i) => { const w = walk(dayStarts[i], d.trades); return { pnl: a.pnl + w.pnl, r: a.r + w.r }; }, { pnl: 0, r: 0 }); return <>all days: <span className={posNeg(tot.pnl)}>{fmtUSD(tot.pnl)}</span> · <span className={posNeg(tot.r)}>{fmtR(tot.r)}</span></>; })()}
+            </div>
+          </div>
+          <div className="overflow-hidden rounded border border-terminal-border">
+            <table className="w-full text-xs font-mono">
+              <thead className="bg-terminal-surface text-terminal-dim">
+                <tr>
+                  <th className="text-left px-3 py-1.5 font-normal">Day</th>
+                  <th className="text-right px-3 py-1.5 font-normal">Trades</th>
+                  <th className="text-right px-3 py-1.5 font-normal">W / L</th>
+                  <th className="text-right px-3 py-1.5 font-normal">P&amp;L</th>
+                  <th className="text-right px-3 py-1.5 font-normal">R</th>
+                  <th className="text-right px-3 py-1.5 font-normal">Start</th>
+                  <th className="text-right px-3 py-1.5 font-normal">End</th>
+                  <th className="px-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {days.map((d, i) => { const w = walk(dayStarts[i], d.trades); return (
+                  <tr key={i} onClick={() => (editingDay === i ? null : startEdit(i))} title="Click to open this day's trades"
+                    className={`border-t border-terminal-border/40 cursor-pointer hover:bg-terminal-hover ${editingDay === i ? 'bg-terminal-amber/10' : ''}`}>
+                    <td className="px-3 py-1.5 text-terminal-text">{dayLabel(d, i)}</td>
+                    <td className="px-3 py-1.5 text-right text-terminal-muted">{d.trades.length}</td>
+                    <td className="px-3 py-1.5 text-right"><span className="text-terminal-green">{w.wins}</span> / <span className="text-terminal-red">{w.losses}</span></td>
+                    <td className={`px-3 py-1.5 text-right font-semibold ${posNeg(w.pnl)}`}>{fmtUSD(w.pnl)}</td>
+                    <td className={`px-3 py-1.5 text-right font-semibold ${posNeg(w.r)}`}>{fmtR(w.r)}</td>
+                    <td className="px-3 py-1.5 text-right text-terminal-muted">{fmtUSD(dayStarts[i])}</td>
+                    <td className="px-3 py-1.5 text-right text-terminal-text">{fmtUSD(w.end)}</td>
+                    <td className="px-2 text-right whitespace-nowrap">
+                      <button onClick={(e) => { e.stopPropagation(); deleteDay(i); }} className={`text-[10px] ${armDel === i ? 'text-terminal-red' : 'text-terminal-dim hover:text-terminal-red'}`}>{armDel === i ? 'click again to delete' : '✕'}</button>
+                    </td>
+                  </tr>
+                ); })}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-[10px] font-mono text-terminal-dim">{mode === 'live' ? 'Each live day starts from the balance recorded when it was opened.' : 'Scenario days chain: each day starts where the last one ended, so fixing an earlier day re-flows the later ones.'} Click a day to open its trades, fix them, then Save day.</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -307,6 +375,11 @@ export default function RiskManagementPage({ tab }) {
   const [activeTab, setActiveTab] = useState(tab || 'risk'); // 'risk' | 'monitor' | 'reward'
   useEffect(() => { if (tab) setActiveTab(tab); }, [tab]);
   const [balance,     setBalance]     = useState(() => loadLS(LS_BALANCE, ''));
+  // Live = the real balance of the chosen account; Scenario = a balance you type (Mike, 2026-10-05)
+  const [rmMode,      setRmMode]      = useState(() => loadLS('rm_mode', 'live'));
+  const [liveAccount, setLiveAccount] = useState(() => loadLS('rm_live_account', 'All'));
+  useEffect(() => { localStorage.setItem('rm_mode', JSON.stringify(rmMode)); }, [rmMode]);
+  useEffect(() => { localStorage.setItem('rm_live_account', JSON.stringify(liveAccount)); }, [liveAccount]);
   const [riskPct,     setRiskPct]     = useState(() => loadLS(LS_RISK, '3'));
   // Risk as a % of the account, or a fixed dollar amount per trade (Mike, 2026-10-05)
   const [riskMode,    setRiskMode]    = useState(() => loadLS('rr_risk_mode', 'pct'));
@@ -336,7 +409,7 @@ export default function RiskManagementPage({ tab }) {
   useEffect(() => { localStorage.setItem(LS_RISK,    JSON.stringify(riskPct)); }, [riskPct]);
   useEffect(() => { localStorage.setItem(LS_BALANCE, JSON.stringify(balance)); }, [balance]);
 
-  const bal  = Math.max(0, parseFloat(balance) || 0);
+  const bal  = Math.max(0, parseFloat(rmMode === 'live' ? (liveBalance ?? balance) : balance) || 0);
   const risk = Math.max(0, parseFloat(riskPct) || 0);
   const fixedR = Math.max(0, parseFloat(riskUsd) || 0);
   const oneR = riskMode === 'usd' ? fixedR : bal * (risk / 100);
@@ -384,17 +457,33 @@ export default function RiskManagementPage({ tab }) {
 
         {/* ── Account Size — single manual entry; feeds RR Calculator + Session Tracker ── */}
         <div className="card p-4 flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="stat-label">Account Size</span>
-            {balance && balance === liveBalance && <span className="text-[9px] text-terminal-green font-semibold tracking-wide">● LIVE</span>}
+          <div className="flex items-center rounded border border-terminal-border overflow-hidden">
+            <button onClick={() => setRmMode('live')} className={`px-3 py-1.5 text-xs font-mono ${rmMode === 'live' ? 'bg-terminal-green/15 text-terminal-green' : 'text-terminal-muted hover:text-terminal-text'}`}>Live</button>
+            <button onClick={() => setRmMode('sim')} className={`px-3 py-1.5 text-xs font-mono border-l border-terminal-border ${rmMode === 'sim' ? 'bg-terminal-amber/15 text-terminal-amber' : 'text-terminal-muted hover:text-terminal-text'}`}>Scenario</button>
           </div>
-          <div className="relative w-48">
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm font-mono text-terminal-muted">$</span>
-            <input type="number" value={balance} onChange={e => setBalance(e.target.value)}
-              onFocus={e => e.target.select()}
-              placeholder="0" className="input-field text-base w-full pl-6 font-mono font-semibold" />
-          </div>
-          <span className="text-[10px] font-mono text-terminal-dim">Manual — feeds the RR Calculator and the Session Tracker&apos;s starting balance</span>
+          {rmMode === 'live' ? (
+            <>
+              <span className="stat-label">Account</span>
+              <select value={liveAccount} onChange={e => setLiveAccount(e.target.value)} className="input-field text-sm font-mono py-1.5 w-56">
+                <option value="All">All accounts</option>
+                {accounts.map(a => <option key={a.id ?? a.name} value={a.name}>{a.name}</option>)}
+              </select>
+              <span className="text-base font-mono font-semibold text-terminal-text">{liveBalance ? `$${Number(liveBalance).toLocaleString()}` : '—'}</span>
+              <span className="text-[9px] text-terminal-green font-semibold tracking-wide">● LIVE</span>
+              <span className="text-[10px] font-mono text-terminal-dim">The real balance from the journal. (The balance is for all accounts together for now; the account name labels your days.)</span>
+            </>
+          ) : (
+            <>
+              <span className="stat-label">Account Size</span>
+              <div className="relative w-48">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm font-mono text-terminal-muted">$</span>
+                <input type="number" value={balance} onChange={e => setBalance(e.target.value)}
+                  onFocus={e => e.target.select()}
+                  placeholder="0" className="input-field text-base w-full pl-6 font-mono font-semibold" />
+              </div>
+              <span className="text-[10px] font-mono text-terminal-dim">Scenario — a balance you type; feeds the RR Calculator and the Scenario Session Tracker</span>
+            </>
+          )}
         </div>
 
         <div className="flex gap-6 items-start">
@@ -463,7 +552,7 @@ export default function RiskManagementPage({ tab }) {
 
         {/* ── Right: live Session Tracker ──────────────────────────────── */}
         <div className="flex-1">
-          <SessionTracker balance={balance} riskPct={riskPct} fixedR={riskMode === 'usd' ? fixedR : null} />
+          <SessionTracker mode={rmMode} baseBalance={bal} riskPct={riskPct} fixedR={riskMode === 'usd' ? fixedR : null} />
         </div>
 
         </div>
