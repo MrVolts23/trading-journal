@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { todayMarketDay } from '../lib/marketDay';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 // ── Persistence ────────────────────────────────────────────────────────────────
@@ -69,7 +70,7 @@ function buildWeeks(year, month) {
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function AlchemyCalendarPage() {
-  const today = fmtIso(new Date());
+  const today = todayMarketDay('metal'); // gold's MARKET day: Monday starts Sunday 3 PM Vancouver (see lib/marketDay.js)
   const [year,  setYear]  = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [selections, setSelections] = useState(loadSelections);

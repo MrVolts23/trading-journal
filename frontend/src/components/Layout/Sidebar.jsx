@@ -15,13 +15,11 @@ import { getSettings } from '../../lib/api';
 // In "Edit layout" mode Mike can drag to reorder, drop onto a group to nest, drop
 // onto the bottom zone to un-nest, add/rename/delete groups, reset, and copy the
 // layout JSON. When the arrangement is final we bake the JSON into DEFAULT_LAYOUT
-// and strip the drag-and-drop. Quant Desk (GMA) is ON the menu; its pages ship with GMA.
+// and strip the drag-and-drop.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Quant Desk (GMA) is DEV-ONLY until it ships: import.meta.env.DEV is statically true under the
-// Vite dev server and false in the production build, so the GMA entries are tree-shaken out of
-// the installed app. Remove this gate when GMA ships.
-const GMA_ENABLED = true; // Quant Desk ships (Mike, 2026-09-05); was import.meta.env.DEV while parked
+// Gate for the Alchemy Lab tab (true = on the menu in the installed app too).
+const GMA_ENABLED = true;
 
 // Registry of every page the sidebar can show. Layout refers to pages by route.
 const PAGES = {
@@ -39,17 +37,19 @@ const PAGES = {
   '/calc/compounding':  { label: 'Compounding',       icon: TrendingUp },
   '/calc/expectancy':   { label: 'Expectancy & Kelly', icon: Percent },
   '/calc/monte-carlo':  { label: 'Monte Carlo',       icon: Dices },
+  '/calc/calculator':   { label: 'Calculator',        icon: Calculator },
   '/risk':              { label: 'Risk Management',   icon: ShieldCheck, activeColor: 'text-blue-400 border-blue-400' },
   '/account-monitor':   { label: 'Account Monitor',   icon: Wallet },
-  // Quant Desk (Gold Metal Alchemist) — dev builds only, see GMA_ENABLED
   ...(GMA_ENABLED ? {
     '/alchemy-lab':     { label: 'Alchemy Lab',       icon: Sparkles,  activeColor: 'text-amber-400 border-amber-400' },
-    // Quant Desk four screens (Mike's loop: Edge → Risk → Results → Activity). One accent: amber.
-    '/desk/edge':       { label: 'Edge',              icon: Sparkles,    activeColor: 'text-amber-400 border-amber-400' },
-    '/desk/risk':       { label: 'Risk',              icon: ShieldCheck, activeColor: 'text-amber-400 border-amber-400' },
-    '/desk/results':    { label: 'Results',           icon: BarChart3,   activeColor: 'text-amber-400 border-amber-400' },
-    '/desk/activity':   { label: 'Activity',          icon: Activity,    activeColor: 'text-amber-400 border-amber-400' },
   } : {}),
+  // Trading Desk (2026-10-02): tabs live under /trading-desk/. First tab: Trainer.
+  '/trading-desk/skills':  { label: 'Skills',         icon: Brain,       activeColor: 'text-amber-400 border-amber-400' },
+  '/trading-desk/edge':    { label: 'Edges',          icon: Target,      activeColor: 'text-amber-400 border-amber-400' },
+  '/trading-desk/risk':    { label: 'Risk',           icon: ShieldCheck, activeColor: 'text-amber-400 border-amber-400' },
+  '/trading-desk/trainer': { label: 'Trainer',        icon: Crosshair,   activeColor: 'text-amber-400 border-amber-400' },
+  '/trading-desk/library': { label: 'Library',        icon: Layers,      activeColor: 'text-amber-400 border-amber-400' },
+  '/trading-desk/backtest': { label: 'Backtest',      icon: FlaskConical, activeColor: 'text-amber-400 border-amber-400' },
   '/daily-setup':       { label: 'Daily Setup',       icon: LayoutGrid },
   '/metadrift':         { label: 'MetaDrift',         icon: GitCompare,  activeColor: 'text-purple-400 border-purple-400' },
   '/prop-management':   { label: 'Prop Management',   icon: Trophy,      activeColor: 'text-amber-400 border-amber-400' },
@@ -58,7 +58,7 @@ const PAGES = {
 };
 
 // Icons for the built-in groups; user-created groups fall back to Folder.
-const GROUP_ICONS = { g_journal: BookOpen, g_alchemy: FlaskConical, g_quant: Sparkles, g_calculators: Calculator };
+const GROUP_ICONS = { g_journal: BookOpen, g_alchemy: FlaskConical, g_trading_desk: LineChart, g_calculators: Calculator };
 
 // Palette Mike can pick from for ANY group (edit mode → click the group's icon). Stored on the
 // group as icon: '<name>' so it survives reloads and bakes into the final layout.
@@ -82,8 +82,6 @@ const groupIcon = (g) => ICON_MAP[g.icon] || iconByName(g.label) || GROUP_ICONS[
 // Old route → its replacements, substituted IN PLACE so a saved arrangement keeps its spot.
 const LEGACY = {
   '/trade-backtest': ['/daily-setup', '/metadrift'],
-  // Quant Desk slice 1 → four screens (2026-09-03)
-  '/lab': ['/desk/results'], '/desk/bench': ['/desk/results'], '/strategy-studio': ['/desk/edge'], '/loop-console': ['/desk/activity'],
 };
 
 // Mike's arrangement, baked 2026-09-03 from his "Copy layout" (the DnD editor stays until the
@@ -102,16 +100,16 @@ const DEFAULT_LAYOUT = [
   ]},
   { type: 'group', id: 'g_alchemy', label: 'Alchemy', children: [
     { type: 'item', to: '/alchemy' }, { type: 'item', to: '/alchemy-calendar' },
-    // Alchemy Lab lives with Alchemy for now (Mike, 2026-09-03); Quant Desk = strategy channel.
     ...(GMA_ENABLED ? [{ type: 'item', to: '/alchemy-lab' }] : []),
   ]},
-  ...(GMA_ENABLED ? [{ type: 'group', id: 'g_quant', label: 'Quant Desk', children: [
-    { type: 'item', to: '/desk/edge' }, { type: 'item', to: '/desk/risk' },
-    { type: 'item', to: '/desk/results' }, { type: 'item', to: '/desk/activity' },
-  ]}] : []),
+  { type: 'group', id: 'g_trading_desk', label: 'Trading Desk', icon: 'LineChart', children: [
+    { type: 'item', to: '/trading-desk/skills' }, { type: 'item', to: '/trading-desk/edge' }, { type: 'item', to: '/trading-desk/risk' },
+    { type: 'item', to: '/trading-desk/trainer' }, { type: 'item', to: '/trading-desk/library' }, { type: 'item', to: '/trading-desk/backtest' },
+  ]},
   { type: 'group', id: 'g_calculators', label: 'Calculators', children: [
     { type: 'item', to: '/reward-management' },
     { type: 'item', to: '/calc/compounding' }, { type: 'item', to: '/calc/expectancy' }, { type: 'item', to: '/calc/monte-carlo' },
+    { type: 'item', to: '/calc/calculator' },
   ]},
   { type: 'item', to: '/risk' },
   { type: 'item', to: '/import' },
@@ -191,20 +189,6 @@ function moveInto(layout, id, groupId) {
 const LS_MIGRATIONS = 'sidebar_migrations_v1';
 const MIGRATIONS = [
   { id: 'alchemy-lab-under-alchemy-2026-09-03', run: (l) => PAGES['/alchemy-lab'] ? moveInto(l, '/alchemy-lab', 'g_alchemy') : l },
-  // Quant Desk slice 1: Test Bench + Risk Profile belong in the Quant Desk group (saved layouts append new pages at top level).
-  { id: 'quant-desk-bench-risk-2026-09-03', run: (l) => {
-    let out = l;
-    for (const to of ['/desk/bench', '/desk/risk']) if (PAGES[to]) out = moveInto(out, to, 'g_quant');
-    return out;
-  } },
-  // Quant Desk rebuilt as Mike's four screens: the g_quant group becomes exactly Edge → Risk → Results → Activity.
-  // Old routes vanish via normalizeLayout (PAGES dropped them; LEGACY maps them in place), then moveInto puts each
-  // of the four at the END of g_quant in order, so the group reads Edge, Risk, Results, Activity.
-  { id: 'quant-desk-four-screens-2026-09-03', run: (l) => {
-    let out = l.some((n) => n.type === 'group' && n.id === 'g_quant') ? l : [...l, { type: 'group', id: 'g_quant', label: 'Quant Desk', children: [] }];
-    for (const to of ['/desk/edge', '/desk/risk', '/desk/results', '/desk/activity']) if (PAGES[to]) out = moveInto(out, to, 'g_quant');
-    return out;
-  } },
   // Calculators batch: the three new calculator pages join Trade Compounder in the Calculators group
   // (saved layouts append new pages at top level; if Mike deleted the group, recreate it first).
   { id: 'prop-management-2026-09-16', run: (l) => (PAGES['/prop-management'] ? moveInto(l, '/prop-management', 'g_trading_tools') : l) },
@@ -212,6 +196,46 @@ const MIGRATIONS = [
     let out = l.some((n) => n.type === 'group' && n.id === 'g_calculators') ? l : [...l, { type: 'group', id: 'g_calculators', label: 'Calculators', children: [] }];
     for (const to of ['/calc/compounding', '/calc/expectancy', '/calc/monte-carlo']) if (PAGES[to]) out = moveInto(out, to, 'g_calculators');
     return out;
+  } },
+  // Quant Desk → Trading Desk (2026-10-02): the old group becomes "Trading Desk" where it sat (its old pages are
+  // already gone via normalizeLayout), and the Trainer tab moves inside it.
+  { id: 'trading-desk-replaces-quant-desk-2026-10-02', run: (l) => {
+    const group = { type: 'group', id: 'g_trading_desk', label: 'Trading Desk', icon: 'LineChart', children: [] };
+    let out = l.filter((n) => !(n.type === 'group' && n.id === 'g_trading_desk'));
+    out = out.some((n) => n.type === 'group' && n.id === 'g_quant')
+      ? out.map((n) => (n.type === 'group' && n.id === 'g_quant' ? group : n))
+      : [...out, group];
+    return moveInto(out, '/trading-desk/trainer', 'g_trading_desk');
+  } },
+  // Library tab (2026-10-02) sits under Trading Desk, after Trainer.
+  { id: 'trading-desk-library-2026-10-02', run: (l) => moveInto(l, '/trading-desk/library', 'g_trading_desk') },
+  // A plain calculator joins the Calculators group (2026-10-05).
+  { id: 'plain-calculator-2026-10-05', run: (l) => moveInto(l, '/calc/calculator', 'g_calculators') },
+  // Skills + Risk (2026-10-04): Trading Desk reads Skills → Edges → Risk → Trainer → Library → Backtest. Exits folded into Skills.
+  { id: 'trading-desk-skills-risk-2026-10-04', run: (l) => {
+    const order = ['/trading-desk/skills', '/trading-desk/edge', '/trading-desk/risk', '/trading-desk/trainer', '/trading-desk/library', '/trading-desk/backtest'];
+    let out = l;
+    const nodes = [];
+    for (const to of order) { const r = removeNode(out, to); if (r.node) { nodes.push(r.node); out = r.rest; } }
+    return out.map((n) => (n.type === 'group' && n.id === 'g_trading_desk' ? { ...n, children: [...nodes, ...n.children] } : n));
+  } },
+  // Backtest placeholder (2026-10-02) sits last in Trading Desk, under Library.
+  { id: 'trading-desk-backtest-2026-10-02', run: (l) => moveInto(l, '/trading-desk/backtest', 'g_trading_desk') },
+  // Exits tab (2026-10-02) sits right after Edge: Edge → Exits → Trainer → Library.
+  { id: 'trading-desk-exits-after-edge-2026-10-02', run: (l) => {
+    const { node, rest } = removeNode(l, '/trading-desk/exits');
+    if (!node) return l;
+    return rest.map((n) => {
+      if (!(n.type === 'group' && n.id === 'g_trading_desk')) return n;
+      const i = n.children.findIndex((c) => c.to === '/trading-desk/edge');
+      const ch = [...n.children]; ch.splice(i < 0 ? 0 : i + 1, 0, node); return { ...n, children: ch };
+    });
+  } },
+  // Edge tab (2026-10-02) goes FIRST in Trading Desk: Edge → Trainer → Library.
+  { id: 'trading-desk-edge-first-2026-10-02', run: (l) => {
+    const { node, rest } = removeNode(l, '/trading-desk/edge');
+    if (!node) return l;
+    return rest.map((n) => (n.type === 'group' && n.id === 'g_trading_desk' ? { ...n, children: [node, ...n.children] } : n));
   } },
 ];
 function applyMigrations(layout) {

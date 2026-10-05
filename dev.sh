@@ -1,10 +1,12 @@
 #!/bin/zsh
-# Dev preview for the Trading Journal + Quant Desk: ONE command brings up both halves.
-#   backend (Express + desk API) on :3007 against the real journal.db
+# Dev preview for the Trading Journal: ONE command brings up both halves.
+#   backend (Express) on :3007 against the real journal.db
 #   Vite on :5173 proxying /api to :3007 (API_PORT)
 # The installed app keeps :3001; SOVRN Money uses :3002; nothing here touches them.
 set -e
 REPO="$(cd "$(dirname "$0")" && pwd)"
+# Optional per-copy overrides (untracked): BACKEND_PORT, VITE_PORT, GMA_NO_POLL …
+[ -f "$REPO/.dev-ports" ] && source "$REPO/.dev-ports"
 NODE="${NODE_BIN:-$HOME/.local/bin/node}"
 export TRADING_JOURNAL_DB="${TRADING_JOURNAL_DB:-$HOME/Library/Application Support/mikes-trading-journal/journal.db}"
 # The preview launcher exports PORT=<page port>; the backend must NOT inherit that.
@@ -20,4 +22,6 @@ else
   for i in {1..40}; do curl -s -m 1 "http://localhost:$BACKEND_PORT/api/health" >/dev/null 2>&1 && break; sleep 0.25; done
   echo "backend up on :$BACKEND_PORT (pid $BACKEND_PID)"
 fi
-cd "$REPO/frontend" && exec npm run dev
+# VITE_PORT lets a second copy of the repo preview beside the main one
+cd "$REPO/frontend"
+if [ -n "$VITE_PORT" ]; then exec npm run dev -- --port "$VITE_PORT" --strictPort; else exec npm run dev; fi

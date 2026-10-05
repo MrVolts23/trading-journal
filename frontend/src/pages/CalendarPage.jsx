@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { todayMarketDay, marketOpenNow } from '../lib/marketDay';
 import { createPortal } from 'react-dom';
 import { useOutletContext } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Zap } from 'lucide-react';
@@ -321,9 +322,9 @@ export default function CalendarPage() {
   const prevMonth = () => { if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1); };
   const nextMonth = () => { if (month === 12) { setMonth(1); setYear(y => y + 1); } else setMonth(m => m + 1); };
 
-  const today      = new Date().toISOString().slice(0, 10);
-  const todayDow   = new Date().getDay(); // 0=Sun, 6=Sat
-  const isWeekend  = todayDow === 0 || todayDow === 6;
+  // "today" is the MARKET day (Monday starts Sunday 2 PM Vancouver; see lib/marketDay.js)
+  const today      = todayMarketDay('forex');
+  const isWeekend  = !marketOpenNow('forex'); // the market is shut: nothing to highlight as live
   const allPnls = Object.values(calData).map(d => Math.abs(d.daily_pnl || 0));
   const maxAbs  = Math.max(...allPnls, 1);
 

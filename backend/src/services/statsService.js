@@ -1,4 +1,6 @@
 const { getDb } = require('../db/database');
+// A trade's day is the MARKET day of its exit (entry while open). See lib/marketDay.js.
+const MARKET_DAY = 'market_day(COALESCE(exit_datetime, entry_datetime), market)';
 
 function buildWhereClause(filters) {
   const conditions = [];
@@ -24,13 +26,14 @@ function buildWhereClause(filters) {
     conditions.push('symbol = @symbol');
     params.symbol = filters.symbol;
   }
+  // date filters are MARKET days (see lib/marketDay.js): a trade belongs to the day its exit landed on
   if (filters.dateStart) {
-    conditions.push("entry_datetime >= @dateStart");
+    conditions.push(`${MARKET_DAY} >= @dateStart`);
     params.dateStart = filters.dateStart;
   }
   if (filters.dateEnd) {
-    conditions.push("entry_datetime <= @dateEnd");
-    params.dateEnd = filters.dateEnd + ' 23:59:59';
+    conditions.push(`${MARKET_DAY} <= @dateEnd`);
+    params.dateEnd = filters.dateEnd;
   }
 
   return {
@@ -136,11 +139,11 @@ function getPnlOverTime(filters = {}) {
 
   return db.prepare(`
     SELECT
-      DATE(entry_datetime) as date,
+      ${MARKET_DAY} as date,
       SUM(pnl) as daily_pnl,
       COUNT(*) as trade_count
     FROM trades ${where}
-    GROUP BY DATE(entry_datetime)
+    GROUP BY ${MARKET_DAY}
     ORDER BY date ASC
   `).all(params);
 }
@@ -259,18 +262,18 @@ function getCalendarData(year, month, filters = {}, overrideStart, overrideEnd) 
   const endDateStr = overrideEnd || `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
   const dateFilter = where
-    ? `${where} AND DATE(entry_datetime) >= '${startDate}' AND DATE(entry_datetime) <= '${endDateStr}'`
-    : `WHERE DATE(entry_datetime) >= '${startDate}' AND DATE(entry_datetime) <= '${endDateStr}'`;
+    ? `${where} AND ${MARKET_DAY} >= '${startDate}' AND ${MARKET_DAY} <= '${endDateStr}'`
+    : `WHERE ${MARKET_DAY} >= '${startDate}' AND ${MARKET_DAY} <= '${endDateStr}'`;
 
   return db.prepare(`
     SELECT
-      DATE(entry_datetime) as date,
+      ${MARKET_DAY} as date,
       SUM(pnl) as daily_pnl,
       COUNT(*) as trade_count,
       SUM(CASE WHEN status='WIN' THEN 1 ELSE 0 END) as wins,
       SUM(CASE WHEN status='LOSS' THEN 1 ELSE 0 END) as losses
     FROM trades ${dateFilter}
-    GROUP BY DATE(entry_datetime)
+    GROUP BY ${MARKET_DAY}
     ORDER BY date ASC
   `).all(params);
 }
@@ -282,10 +285,10 @@ function getBalanceOverTime(filters = {}) {
   // Daily PnL from trades
   const dailyPnl = db.prepare(`
     SELECT
-      DATE(entry_datetime) as date,
+      ${MARKET_DAY} as date,
       SUM(pnl) as daily_pnl
     FROM trades ${where}
-    GROUP BY DATE(entry_datetime)
+    GROUP BY ${MARKET_DAY}
     ORDER BY date ASC
   `).all(params);
 

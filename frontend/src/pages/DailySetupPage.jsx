@@ -1,13 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { todayMarketDay } from '../lib/marketDay';
 import { Plus, X, Upload, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getSettings, updateSettings, getDailySetup, saveDailySetup } from '../lib/api';
 import { fmtCurrency } from '../lib/utils';
 
-// Local-time ISO date (yyyy-mm-dd) — avoids UTC off-by-one from toISOString()
-function todayIso() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+// Today = the MARKET day: Monday starts Sunday 2 PM Vancouver, so after 2 PM the setup is for tomorrow (see lib/marketDay.js)
+const todayIso = () => todayMarketDay('forex');
 function isoOf(y, m, d) {
   return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }

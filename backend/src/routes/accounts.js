@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db/database');
+const { todayMarketDay } = require('../lib/marketDay');
 const { resolveAccount } = require('../services/importService');
 
 // GET all accounts
@@ -169,7 +170,7 @@ router.post('/:id/correction', (req, res) => {
   if (isNaN(correctionAmount) || correctionAmount === 0) {
     return res.status(400).json({ error: 'amount must be a non-zero number' });
   }
-  const correctionDate = date || new Date().toISOString().slice(0, 10);
+  const correctionDate = date || todayMarketDay('forex');
 
   // Get last balance for this account to maintain running totals
   const last = db.prepare(`

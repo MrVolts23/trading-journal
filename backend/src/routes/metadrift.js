@@ -24,10 +24,10 @@ function buildDailyBalances(db, account) {
 
   // All daily trade P&L, all-time (we need full history for accurate running total)
   const tradeRows = db.prepare(`
-    SELECT DATE(exit_datetime) AS date, SUM(pnl) AS daily_pnl
+    SELECT market_day(exit_datetime, market) AS date, SUM(pnl) AS daily_pnl
     FROM trades
     WHERE 1=1 ${acctClause}
-    GROUP BY DATE(exit_datetime)
+    GROUP BY market_day(exit_datetime, market)
     ORDER BY date ASC
   `).all();
 
@@ -117,15 +117,15 @@ router.get('/calendar', (req, res) => {
     // Daily P&L, wins, losses for the requested month only
     const days = db.prepare(`
       SELECT
-        DATE(exit_datetime)                                   AS date,
+        market_day(exit_datetime, market)                                   AS date,
         SUM(pnl)                                              AS daily_pnl,
         COUNT(*)                                              AS trade_count,
         SUM(CASE WHEN status='WIN'  THEN 1 ELSE 0 END)       AS wins,
         SUM(CASE WHEN status='LOSS' THEN 1 ELSE 0 END)       AS losses
       FROM trades
-      WHERE DATE(exit_datetime) >= ? AND DATE(exit_datetime) <= ?
+      WHERE market_day(exit_datetime, market) >= ? AND market_day(exit_datetime, market) <= ?
       ${acctClause}
-      GROUP BY DATE(exit_datetime)
+      GROUP BY market_day(exit_datetime, market)
       ORDER BY date ASC
     `).all(monthStart, monthEnd);
 

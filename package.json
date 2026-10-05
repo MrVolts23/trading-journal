@@ -44,16 +44,6 @@
       {
         "from": "frontend/dist",
         "to": "frontend/dist"
-      },
-      {
-        "from": "desk",
-        "to": "desk",
-        "filter": [
-          "**/*",
-          "!data/**/*",
-          "!tests/**/*",
-          "!node_modules/.cache/**/*"
-        ]
       }
     ],
     "mac": {

@@ -1,6 +1,7 @@
 const { parse } = require('csv-parse/sync');
 const XLSX = require('xlsx');
 const { getDb } = require('../db/database');
+const { tradeWeekday } = require('../lib/marketDay');
 
 // ─── EightCap MT5 Excel / "Trades Report" mapping ─────────────────────────────
 // Columns: Ticket, Login, Type, Symbol, Volume, Swaps, Commission,
@@ -243,7 +244,7 @@ function pairTradingViewRows(rows, accountOverride) {
       }
     }
 
-    const weekday = entryDt ? days[new Date(entryDt).getDay()] : null;
+    const weekday = tradeWeekday(exitDt, entryDt, market, 'vancouver'); // TradingView exports are in Mike's clock
 
     trades.push({
       trade_id: posId,
@@ -333,7 +334,7 @@ function parseTradingViewOrderHistory(rows, accountOverride) {
 
         // Weekday
         let weekday = null;
-        try { weekday = days[new Date(p.fillTime).getDay()]; } catch(e) {}
+        try { weekday = tradeWeekday(fillTime, p.fillTime, market, 'vancouver'); } catch(e) {}
 
         const dateStr = (p.fillTime || '').replace(/[-: ]/g, '').slice(0, 12);
         trades.push({
@@ -425,7 +426,7 @@ function parseBalanceHistoryRows(rows, accountOverride) {
     const status   = pnl > 0 ? 'WIN' : pnl < 0 ? 'LOSS' : 'B/E';
 
     let weekday = null;
-    try { weekday = days[new Date(exitDt).getDay()]; } catch (_) {}
+    try { weekday = tradeWeekday(exitDt, null, market, 'vancouver'); } catch (_) {}
 
     const dateStr = exitDt.replace(/[-: ]/g, '').slice(0, 12);
 
@@ -557,8 +558,7 @@ function applyMapping(rows, mapping, loginToAccount) {
     // Weekday
     if (trade.entry_datetime) {
       try {
-        const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-        trade.weekday = days[new Date(trade.entry_datetime).getDay()];
+        trade.weekday = tradeWeekday(trade.exit_datetime, trade.entry_datetime, trade.market); // broker (MT5) clock
       } catch (e) {}
     }
 

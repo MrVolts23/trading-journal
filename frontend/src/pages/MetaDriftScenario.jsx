@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { todayMarketDay } from '../lib/marketDay';
 import { fmtCurrency } from '../lib/utils';
 
 // ── MetaDrift Scenario ────────────────────────────────────────────────────────
@@ -107,7 +108,7 @@ export default function MetaDriftScenario({ year, month }) {
   const winRate  = decided > 0 ? (res.wins / decided) * 100 : null;
   const maxAbs   = Math.max(...Object.values(res.days).map(d => Math.abs(d.dayPnl)), 1);
   const oneRDay1 = res.start * (res.risk / 100);
-  const today    = fmtIso(new Date());
+  const today    = todayMarketDay('forex'); // the MARKET day (see lib/marketDay.js)
 
   // Calendar grid (same Mon–Fri layout as Live MetaDrift)
   const gridStart = getCalGridStart(year, month);

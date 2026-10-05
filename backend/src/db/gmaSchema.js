@@ -5,7 +5,7 @@ const GMA_SCHEMA = `
 -- One row per captured trading day (key hour + day print)
 CREATE TABLE IF NOT EXISTS gma_alchemy_days (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  date TEXT NOT NULL,                -- session date (PST, date the print session STARTS)
+  date TEXT NOT NULL,                -- the MARKET day of the session (gold: starts 3 PM Vancouver, so a Sunday-afternoon session is "Monday"); see lib/marketDay.js
   symbol TEXT NOT NULL DEFAULT 'XAUUSD',
   key_ohlc TEXT,                     -- JSON array of 1-min bars for the key window
   print_ohlc TEXT,                   -- JSON array of print-timeframe bars for the session

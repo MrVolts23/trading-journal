@@ -25,7 +25,7 @@ const metadriftRouter      = require('./routes/metadrift');
 const dailySetupRouter     = require('./routes/dailySetup');
 const newsRouter           = require('./routes/news');
 const gmaRouter            = require('./routes/gma');
-const deskRouter           = require('./routes/desk');   // Quant Desk (desk/ sibling folder)
+const tradingDeskRouter    = require('./routes/tradingDesk'); // Trading Desk (Trainer tab); own database
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -57,7 +57,7 @@ app.use('/api/metadrift',       metadriftRouter);
 app.use('/api/daily-setup',     dailySetupRouter);
 app.use('/api/news',           newsRouter);
 app.use('/api/gma',            gmaRouter);
-app.use('/api/desk',           deskRouter);
+app.use('/api/trading-desk',   tradingDeskRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

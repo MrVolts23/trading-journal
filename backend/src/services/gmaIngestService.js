@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { getDb } = require('../db/database');
+const { tradeWeekday } = require('../lib/marketDay');
 
 const OUT_DIR =
   process.env.GMA_EA_OUT ||
@@ -144,7 +145,7 @@ function pairTrades(db) {
         commission: Number(deals.reduce((a, d) => a + (d.commission || 0), 0).toFixed(2)),
         pnl: Number(pnl.toFixed(2)),
         duration: `${durationMin}m`,
-        weekday: days[new Date(entryTime.replace(' ', 'T')).getDay()] || null,
+        weekday: tradeWeekday(exitTime, entryTime, market) || null,
       };
       const info = insertTrade.run(row);
       if (info.changes > 0) created++;

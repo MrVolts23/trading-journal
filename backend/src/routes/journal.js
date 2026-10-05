@@ -16,7 +16,7 @@ router.get('/', (req, res) => {
     if (search)                       { conditions.push("(symbol LIKE ? OR strategy LIKE ?)"); params.push(`%${search}%`, `%${search}%`); }
     if (reviewed === 'yes')           { conditions.push("reviewed = 1"); }
     if (reviewed === 'no')            { conditions.push("(reviewed IS NULL OR reviewed = 0)"); }
-    if (dateFrom)                     { conditions.push("date(entry_datetime) >= date(?)"); params.push(dateFrom); }
+    if (dateFrom)                     { conditions.push('market_day(COALESCE(exit_datetime, entry_datetime), market) >= ?'); params.push(dateFrom); }
 
     const where  = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
     const offset = (parseInt(page) - 1) * parseInt(limit);

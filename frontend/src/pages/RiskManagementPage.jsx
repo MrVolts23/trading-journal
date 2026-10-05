@@ -152,9 +152,13 @@ const LS_SESSION = 'rr_session_trades'; // localStorage key for the live session
 // Manual cumulative-trade tool for live trading. COMPOUNDING 1R: each trade's 1R =
 // risk% × the balance BEFORE that trade. Enter the $ result, it reverse-calcs the R.
 // Fully standalone — never touches Trade Log or Journal.
-function SessionTracker({ balance, riskPct }) {
+function SessionTracker({ balance, riskPct, fixedR = null }) {
   const [trades, setTrades] = useState(() => loadLS(LS_SESSION, []));
   const [input,  setInput]  = useState('');
+  // Enter the result in dollars, or in R (Mike, 2026-10-05): in R mode the dollars are worked out from the
+  // NEXT trade's 1R (risk% of the balance as it stands now), so backtest results in R drop straight in.
+  const [mode,   setMode]   = useState(() => loadLS('rm_session_input_mode', 'usd'));
+  useEffect(() => { localStorage.setItem('rm_session_input_mode', JSON.stringify(mode)); }, [mode]);
 
   useEffect(() => { localStorage.setItem(LS_SESSION, JSON.stringify(trades)); }, [trades]);
 
@@ -164,7 +168,7 @@ function SessionTracker({ balance, riskPct }) {
   // Walk trades, compounding the balance so 1R grows/shrinks with it
   let running = B0;
   const rows = trades.map((amt, i) => {
-    const oneR = running * (risk / 100);          // 1R off the balance BEFORE this trade
+    const oneR = fixedR != null ? fixedR : running * (risk / 100);   // 1R off the balance BEFORE this trade (or the fixed $)
     const r    = oneR > 0 ? amt / oneR : 0;
     running   += amt;                              // balance compounds
     return { i, amt, oneR, r, balanceAfter: running };
@@ -177,10 +181,12 @@ function SessionTracker({ balance, riskPct }) {
   const decided = wins + losses; // breakeven trades (amt === 0) excluded from win rate
   const winRate = decided > 0 ? (wins / decided) * 100 : 0;
 
+  const nextOneR = fixedR != null ? fixedR : currentBalance * (risk / 100);     // what 1R is worth for the next trade
   const addTrade = () => {
     const v = parseFloat(input);
     if (isNaN(v)) { setInput(''); return; }
-    setTrades(t => [...t, v]);
+    const amt = mode === 'r' ? Math.round(v * nextOneR * 100) / 100 : v;
+    setTrades(t => [...t, amt]);
     setInput('');
   };
 
@@ -235,13 +241,20 @@ function SessionTracker({ balance, riskPct }) {
         {B0 <= 0 && <div className="text-[10px] font-mono text-terminal-red">Enter an account balance in the RR Calculator to begin.</div>}
         <div className="flex items-end gap-2">
           <div className="flex-1 space-y-1">
-            <label className="text-[10px] font-mono text-terminal-muted uppercase tracking-wide block">Trade result — $ (negative for a loss)</label>
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] font-mono text-terminal-muted uppercase tracking-wide block">Trade result — {mode === 'r' ? 'R' : '$'} (negative for a loss)</label>
+              <div className="flex items-center rounded border border-terminal-border overflow-hidden">
+                <button onClick={() => { setMode('usd'); setInput(''); }} className={`px-2 py-0.5 text-[10px] font-mono ${mode === 'usd' ? 'bg-terminal-amber/15 text-terminal-amber' : 'text-terminal-muted hover:text-terminal-text'}`}>$</button>
+                <button onClick={() => { setMode('r'); setInput(''); }} className={`px-2 py-0.5 text-[10px] font-mono border-l border-terminal-border ${mode === 'r' ? 'bg-terminal-amber/15 text-terminal-amber' : 'text-terminal-muted hover:text-terminal-text'}`}>R</button>
+              </div>
+              {mode === 'r' && <span className="text-[10px] font-mono text-terminal-dim">1R for the next trade = {fmtUSD(nextOneR)}{input && !isNaN(parseFloat(input)) ? ` → ${fmtUSD(parseFloat(input) * nextOneR)}` : ''}</span>}
+            </div>
             <div className="relative">
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-mono text-terminal-muted">$</span>
-              <input type="number" value={input}
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-mono text-terminal-muted">{mode === 'r' ? 'R' : '$'}</span>
+              <input type="number" step="any" value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') addTrade(); }}
-                placeholder="e.g. 500 or -250"
+                placeholder={mode === 'r' ? 'e.g. 2.5 or -1' : 'e.g. 500 or -250'}
                 className="input-field text-sm w-full pl-6 font-mono" />
             </div>
           </div>
@@ -295,6 +308,11 @@ export default function RiskManagementPage({ tab }) {
   useEffect(() => { if (tab) setActiveTab(tab); }, [tab]);
   const [balance,     setBalance]     = useState(() => loadLS(LS_BALANCE, ''));
   const [riskPct,     setRiskPct]     = useState(() => loadLS(LS_RISK, '3'));
+  // Risk as a % of the account, or a fixed dollar amount per trade (Mike, 2026-10-05)
+  const [riskMode,    setRiskMode]    = useState(() => loadLS('rr_risk_mode', 'pct'));
+  const [riskUsd,     setRiskUsd]     = useState(() => loadLS('rr_risk_usd', '1000'));
+  useEffect(() => { localStorage.setItem('rr_risk_mode', JSON.stringify(riskMode)); }, [riskMode]);
+  useEffect(() => { localStorage.setItem('rr_risk_usd', JSON.stringify(riskUsd)); }, [riskUsd]);
   const [liveBalance, setLiveBalance] = useState(null);
   const [copied,   setCopied]   = useState(false);
   const [accounts, setAccounts] = useState([]);
@@ -320,7 +338,8 @@ export default function RiskManagementPage({ tab }) {
 
   const bal  = Math.max(0, parseFloat(balance) || 0);
   const risk = Math.max(0, parseFloat(riskPct) || 0);
-  const oneR = bal * (risk / 100);
+  const fixedR = Math.max(0, parseFloat(riskUsd) || 0);
+  const oneR = riskMode === 'usd' ? fixedR : bal * (risk / 100);
   const fmt  = (n) => '$' + Math.round(n).toLocaleString('en-US');
 
   const plainText = [
@@ -386,7 +405,20 @@ export default function RiskManagementPage({ tab }) {
 
           <div className="card p-4 space-y-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-mono text-terminal-muted block">Risk %</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-mono text-terminal-muted block">{riskMode === 'usd' ? 'Risk per trade ($)' : 'Risk %'}</label>
+                <div className="flex items-center rounded border border-terminal-border overflow-hidden">
+                  <button onClick={() => setRiskMode('pct')} className={`px-2 py-0.5 text-[10px] font-mono ${riskMode === 'pct' ? 'bg-terminal-amber/15 text-terminal-amber' : 'text-terminal-muted hover:text-terminal-text'}`}>%</button>
+                  <button onClick={() => setRiskMode('usd')} className={`px-2 py-0.5 text-[10px] font-mono border-l border-terminal-border ${riskMode === 'usd' ? 'bg-terminal-amber/15 text-terminal-amber' : 'text-terminal-muted hover:text-terminal-text'}`}>$</button>
+                </div>
+              </div>
+              {riskMode === 'usd' ? (
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-mono text-terminal-muted">$</span>
+                  <input type="number" value={riskUsd} onChange={e => setRiskUsd(e.target.value)} onFocus={e => e.target.select()} placeholder="1000"
+                    className="input-field text-base w-full pl-6 font-mono font-semibold" />
+                </div>
+              ) : (
               <div className="relative">
                 <input type="number" value={riskPct} onChange={e => setRiskPct(e.target.value)}
                   onFocus={e => e.target.select()}
@@ -394,6 +426,7 @@ export default function RiskManagementPage({ tab }) {
                   className="input-field text-sm w-full pr-7 text-right font-mono" />
                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-mono text-terminal-muted">%</span>
               </div>
+              )}
             </div>
             <div className="text-xs font-mono text-terminal-muted">
               1R = <span className="text-terminal-amber font-semibold text-sm">{fmt(oneR)}</span>
@@ -430,7 +463,7 @@ export default function RiskManagementPage({ tab }) {
 
         {/* ── Right: live Session Tracker ──────────────────────────────── */}
         <div className="flex-1">
-          <SessionTracker balance={balance} riskPct={riskPct} />
+          <SessionTracker balance={balance} riskPct={riskPct} fixedR={riskMode === 'usd' ? fixedR : null} />
         </div>
 
         </div>

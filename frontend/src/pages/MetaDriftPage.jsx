@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { todayMarketDay } from '../lib/marketDay';
 import { useOutletContext } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { getMetaDriftCalendar, saveMetaDriftEntry, deleteMetaDriftEntry } from '../lib/api';
@@ -218,7 +219,7 @@ export default function MetaDriftPage() {
     weekRows.push(week);
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayMarketDay('forex'); // the MARKET day (see lib/marketDay.js)
 
   // Max abs P&L for color intensity
   const allPnls  = Object.values(dayData).map(d => Math.abs(d.daily_pnl || 0));

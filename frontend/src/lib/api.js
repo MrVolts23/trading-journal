@@ -155,39 +155,44 @@ export const gmaPatchStrategy   = (id, data)  => api.patch(`/gma/strategies/${id
 export const gmaAddExample      = (id, data)  => api.post(`/gma/strategies/${id}/examples`, data).then(r => r.data);
 export const gmaDeleteExample   = (id)        => api.delete(`/gma/examples/${id}`).then(r => r.data);
 
-// Quant Desk (desk/ — grinder + judge; demo-only, holdout: none yet)
-export const deskGetStatus        = ()             => api.get('/desk/status').then(r => r.data);
-export const deskGetRiskProfile   = ()             => api.get('/desk/risk-profile').then(r => r.data);
-export const deskPutRiskProfile   = (fields)       => api.put('/desk/risk-profile', fields).then(r => r.data);
-export const deskGetStrategies    = ()             => api.get('/desk/strategies').then(r => r.data);
-export const deskGetExperiments   = (params)       => api.get('/desk/experiments', { params }).then(r => r.data);
-export const deskCreateExperiment = (data)         => api.post('/desk/experiments', data).then(r => r.data);
-// bake runs synchronously on the server (folds × experiments) — allow up to 3 minutes
-export const deskBake             = (ids)          => api.post('/desk/bake', ids ? { ids } : {}, { timeout: 180000 }).then(r => r.data);
-export const deskGetExperiment    = (id)           => api.get(`/desk/experiments/${id}`).then(r => r.data);
-export const deskGetLeaderboard   = (window)       => api.get('/desk/leaderboard', { params: { window } }).then(r => r.data);
-export const deskGetSchema        = ()             => api.get('/desk/schema').then(r => r.data);
-
-// Quant Desk four-screen UX (Edge / Risk / Results / Activity), 2026-09-03. Owner B (EdgePage) imports these names.
-export const deskGetRulesheet   = (strategyId) => api.get('/desk/rulesheet', { params: strategyId != null ? { strategy_id: strategyId } : {} }).then(r => r.data);
-export const deskGetVersions    = (family)     => api.get('/desk/versions', { params: family ? { family } : {} }).then(r => r.data);
-// creates the child version (if there are changes) and bakes it synchronously — allow up to 3 minutes
-export const deskEdgeTest       = ({ strategy_id, changes, note }) => api.post('/desk/edge/test', { strategy_id, changes: changes || {}, note: note || '' }, { timeout: 180000 }).then(r => r.data);
-export const deskGetResults     = (window)     => api.get('/desk/results', { params: { window: window === 'month' ? 'month' : 'week' } }).then(r => r.data);
-export const deskGetResult      = (id)         => api.get(`/desk/results/${id}`).then(r => r.data);
-export const deskGetActivity    = (limit = 50) => api.get('/desk/activity', { params: { limit } }).then(r => r.data);
+// Trading Desk · Trainer (own database beside the journal's; gold history comes from the demo MetaTrader)
+export const tdStatus        = (symbol)   => api.get('/trading-desk/status', { params: symbol ? { symbol } : {} }).then(r => r.data);
+export const tdFetchHistory  = (body)     => api.post('/trading-desk/history', body || { months: 12 }).then(r => r.data);
+export const tdInstruments   = ()         => api.get('/trading-desk/instruments').then(r => r.data);
+export const tdAddInstrument = (body)     => api.post('/trading-desk/instruments', body).then(r => r.data);
+export const tdTopUp         = (symbol)   => api.post('/trading-desk/history/top-up', symbol ? { symbol } : {}).then(r => r.data);
+export const tdBars          = (tf, symbol) => api.get('/trading-desk/bars', { params: symbol ? { tf, symbol } : { tf }, timeout: 120000 }).then(r => r.data);
+export const tdExamples      = (edge, skill) => api.get('/trading-desk/examples', { params: { ...(edge ? { edge } : {}), ...(skill ? { skill } : {}) } }).then(r => r.data);
+export const tdEdges         = ()         => api.get('/trading-desk/edges').then(r => r.data);
+export const tdCreateEdge    = (body)     => api.post('/trading-desk/edges', body || {}).then(r => r.data);
+export const tdUpdateEdge    = (id, body) => api.put(`/trading-desk/edges/${id}`, body).then(r => r.data);
+export const tdClefStatus    = ()         => api.get('/trading-desk/clef/status').then(r => r.data);
+export const tdClefStart     = ()         => api.post('/trading-desk/clef/start', {}, { timeout: 90000 }).then(r => r.data);
+export const tdClefAsk       = (id, skills) => api.post(`/trading-desk/clef/ask/${id}`, skills ? { skills } : {}, { timeout: 300000 }).then(r => r.data);
+export const tdClefRuns      = (example)  => api.get('/trading-desk/clef/runs', { params: example ? { example } : {} }).then(r => r.data);
+export const tdSkills        = ()         => api.get('/trading-desk/skills').then(r => r.data);
+export const tdCreateSkill   = (body)     => api.post('/trading-desk/skills', body).then(r => r.data);
+export const tdUpdateSkill   = (key, body) => api.put(`/trading-desk/skills/${key}`, body).then(r => r.data);
+export const tdDeleteSkill   = (key)      => api.delete(`/trading-desk/skills/${key}`).then(r => r.data);
+export const tdRisk          = ()         => api.get('/trading-desk/risk').then(r => r.data);
+export const tdCreateRisk    = (body)     => api.post('/trading-desk/risk', body || {}).then(r => r.data);
+export const tdUpdateRisk    = (id, body) => api.put(`/trading-desk/risk/${id}`, body).then(r => r.data);
+export const tdDeleteRisk    = (id)       => api.delete(`/trading-desk/risk/${id}`).then(r => r.data);
+export const tdExits         = ()         => api.get('/trading-desk/exits').then(r => r.data);
+export const tdCreateExit    = (body)     => api.post('/trading-desk/exits', body || {}).then(r => r.data);
+export const tdUpdateExit    = (id, body) => api.put(`/trading-desk/exits/${id}`, body).then(r => r.data);
+export const tdDeleteExit    = (id)       => api.delete(`/trading-desk/exits/${id}`).then(r => r.data);
+export const tdEdgeCounts    = (id)       => api.get(`/trading-desk/edges/${id}/counts`).then(r => r.data);
+export const tdDeleteEdge    = (id)       => api.delete(`/trading-desk/edges/${id}`).then(r => r.data);
+export const tdExample       = (id)       => api.get(`/trading-desk/examples/${id}`).then(r => r.data);
+export const tdSaveExample   = (body, id) => (id ? api.put(`/trading-desk/examples/${id}`, body, { timeout: 120000 }) : api.post('/trading-desk/examples', body, { timeout: 120000 })).then(r => r.data);
+export const tdRemoveExample = (id)       => api.delete(`/trading-desk/examples/${id}`).then(r => r.data);
+export const tdEntryMoment   = (body)     => api.post('/trading-desk/entry-moment', body).then(r => r.data);
+export const tdPatchExample  = (id, body) => api.patch(`/trading-desk/examples/${id}`, body).then(r => r.data);
+export const tdRemoved       = (edge)     => api.get('/trading-desk/removed', { params: edge ? { edge } : {} }).then(r => r.data);
+export const tdRestore       = (key)      => api.post(`/trading-desk/removed/${key}/restore`).then(r => r.data);
+export const tdDestroyRemoved = (key, edge) => api.delete(key ? `/trading-desk/removed/${key}` : '/trading-desk/removed', { params: !key && edge ? { edge } : {} }).then(r => r.data);
+export const tdRemovedImageUrl = (key, name) => `/api/trading-desk/removed/${key}/image/${name}`;
+export const tdImageUrl      = (id, name) => `/api/trading-desk/examples/${id}/image/${name}`;
 
 export default api;
-
-// Quant Desk chat drawer ("Talk to the desk"), 2026-09-03. Owner B (DeskChat) imports these names.
-// The model only proposes; a test runs only when Mike taps Apply & test (same code path as /edge/test).
-export const deskChatStatus    = ()                              => api.get('/desk/chat/status').then(r => r.data);
-export const deskChatThreads   = ()                              => api.get('/desk/chat/threads').then(r => r.data);
-export const deskChatThread    = (id)                            => api.get(`/desk/chat/threads/${id}`).then(r => r.data);
-export const deskChatNewThread = ()                              => api.post('/desk/chat/threads').then(r => r.data);
-// the model call can take a while on a long thread, so allow up to 3 minutes
-export const deskChatSend      = ({ thread_id, text, context })  => api.post('/desk/chat/messages', { ...(thread_id != null ? { thread_id } : {}), text, context: context || {} }, { timeout: 180000 }).then(r => r.data);
-// apply = make the child version and bake it synchronously, so allow up to 3 minutes
-export const deskChatApply     = (messageId, { strategy_id, note } = {}) => api.post(`/desk/chat/proposals/${messageId}/apply`, { strategy_id, ...(note ? { note } : {}) }, { timeout: 180000 }).then(r => r.data);
-export const deskChatSaveKey   = (key) => api.post('/desk/chat/key', { key }).then(r => r.data);
-export const deskChatRemoveKey = ()    => api.delete('/desk/chat/key').then(r => r.data);

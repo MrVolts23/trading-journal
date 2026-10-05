@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const SCHEMA = require('./schema');
 const { applyGmaSchema } = require('./gmaSchema');
+const marketDay = require('../lib/marketDay');
 
 // Database lives in a SIBLING folder next to the app folder so it survives updates.
 //
@@ -37,6 +38,7 @@ let db;
 function getDb() {
   if (!db) {
     db = new Database(DB_PATH);
+    marketDay.registerSqlite(db); // market_day(), market_week(), market_weekday() for GROUP BY / filters
     db.exec(SCHEMA);
     runMigrations(db);
     seedDefaults(db);
@@ -47,6 +49,29 @@ function getDb() {
 
 function runMigrations(db) {
   const cols = db.prepare("PRAGMA table_info(trades)").all().map(c => c.name);
+  // 2026-10-02: the stored weekday becomes the MARKET day of the trade's exit (entry while open). One pass.
+  if (db.pragma('user_version', { simple: true }) < 1) {
+    db.prepare("UPDATE trades SET weekday = market_weekday(COALESCE(exit_datetime, entry_datetime), market) WHERE entry_datetime IS NOT NULL OR exit_datetime IS NOT NULL").run();
+    db.pragma('user_version = 1');
+  }
+  // 2026-10-02: Alchemy Lab session days were dated by the Vancouver date the session STARTED (3-4 PM). They become
+  // MARKET days: a session that starts Thursday afternoon is Friday's market day; a Sunday session is Monday's.
+  if (db.pragma('user_version', { simple: true }) < 2) {
+    if (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'gma_alchemy_days'").get()) {
+      const rows = db.prepare('SELECT id, date, symbol FROM gma_alchemy_days ORDER BY date DESC').all();
+      const upd = db.prepare('UPDATE gma_alchemy_days SET date = ? WHERE id = ?');
+      const taken = db.prepare('SELECT id FROM gma_alchemy_days WHERE date = ? AND symbol = ? AND id != ?');
+      db.transaction(() => {
+        for (const r of rows) {
+          const next = marketDay.marketDayFromNaive(`${r.date} 15:30`, 'METAL', 'vancouver');
+          if (!next || next === r.date) continue;
+          if (taken.get(next, r.symbol, r.id)) { console.warn(`[DB] Alchemy day ${r.date} not moved to ${next}: that day already exists`); continue; }
+          upd.run(next, r.id);
+        }
+      })();
+    }
+    db.pragma('user_version = 2');
+  }
   if (!cols.includes('grade'))          db.exec("ALTER TABLE trades ADD COLUMN grade TEXT");
   // Trade Journal columns
   if (!cols.includes('emotion'))        db.exec("ALTER TABLE trades ADD COLUMN emotion TEXT");

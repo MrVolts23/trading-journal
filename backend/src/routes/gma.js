@@ -13,7 +13,7 @@ router.get('/status', (req, res) => {
   const db = getDb();
   const today = db
     .prepare(`SELECT COALESCE(SUM(cost_usd),0) AS spent, COUNT(*) AS runs
-              FROM gma_loop_runs WHERE date(started_at) = date('now')`)
+              FROM gma_loop_runs WHERE market_day(started_at, 'METAL', 'utc') = market_day(datetime('now'), 'METAL', 'utc')`)
     .get();
   const lastRuns = db
     .prepare(`SELECT loop_name, status, started_at, finished_at, cost_usd, summary

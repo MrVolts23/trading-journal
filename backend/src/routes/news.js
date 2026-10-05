@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const https   = require('https');
 const { getDb } = require('../db/database');
+const { marketDay } = require('../lib/marketDay');
 
 // ── Table setup ──────────────────────────────────────────────────────────────
 function ensureTable(db) {
@@ -89,7 +90,7 @@ async function refreshFromFF(db) {
           try {
             if (!e.date || !e.title) continue;
             const dt      = new Date(e.date);
-            const dateStr = dt.toISOString().slice(0, 10);
+            const dateStr = marketDay(dt.getTime() / 1000, 'forex'); // the MARKET day the event lands in (after 2 PM Vancouver = tomorrow)
             const hh      = String(dt.getUTCHours()).padStart(2, '0');
             const mm      = String(dt.getUTCMinutes()).padStart(2, '0');
             const timeStr = `${hh}:${mm}`;

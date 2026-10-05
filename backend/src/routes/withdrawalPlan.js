@@ -137,8 +137,8 @@ router.get('/weekly-pnl', (req, res) => {
   const db = getDb();
   const rows = db.prepare(`
     SELECT
-      strftime('%Y-%W', entry_datetime) as week_key,
-      date(MIN(entry_datetime))         as week_start,
+      market_week(COALESCE(exit_datetime, entry_datetime), market) as week_key,   -- Monday of the market week
+      market_week(COALESCE(exit_datetime, entry_datetime), market) as week_start,
       SUM(pnl)                          as total_pnl,
       COUNT(*)                          as trade_count,
       SUM(CASE WHEN status='WIN'  THEN 1 ELSE 0 END) as wins,

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db/database');
+const { tradeWeekday } = require('../lib/marketDay');
 
 // GET /api/trades
 router.get('/', (req, res) => {
@@ -15,8 +16,9 @@ router.get('/', (req, res) => {
   if (market && market !== 'All') { conditions.push('market = @market'); params.market = market; }
   if (strategy && strategy !== 'All') { conditions.push('strategy = @strategy'); params.strategy = strategy; }
   if (symbol) { conditions.push('symbol LIKE @symbol'); params.symbol = `%${symbol}%`; }
-  if (dateStart) { conditions.push("entry_datetime >= @dateStart"); params.dateStart = dateStart; }
-  if (dateEnd) { conditions.push("entry_datetime <= @dateEnd"); params.dateEnd = dateEnd + ' 23:59:59'; }
+  // date filters are MARKET days of the exit (entry while open) — see lib/marketDay.js
+  if (dateStart) { conditions.push('market_day(COALESCE(exit_datetime, entry_datetime), market) >= @dateStart'); params.dateStart = dateStart; }
+  if (dateEnd) { conditions.push('market_day(COALESCE(exit_datetime, entry_datetime), market) <= @dateEnd'); params.dateEnd = dateEnd; }
 
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
@@ -43,7 +45,7 @@ router.get('/', (req, res) => {
         SELECT SUM(aa.amount)
         FROM account_activity aa
         WHERE aa.account = t.account
-          AND aa.date <= date(t.entry_datetime)
+          AND aa.date <= market_day(t.entry_datetime, t.market)
           AND aa.activity_type = 'withdrawal'
       ), 0) AS withdrawals_to_date
     FROM trades t
@@ -91,8 +93,9 @@ router.get('/export/csv', (req, res) => {
   if (status && status !== 'All') { conditions.push('status = @status'); params.status = status; }
   if (market && market !== 'All') { conditions.push('market = @market'); params.market = market; }
   if (strategy && strategy !== 'All') { conditions.push('strategy = @strategy'); params.strategy = strategy; }
-  if (dateStart) { conditions.push("entry_datetime >= @dateStart"); params.dateStart = dateStart; }
-  if (dateEnd) { conditions.push("entry_datetime <= @dateEnd"); params.dateEnd = dateEnd + ' 23:59:59'; }
+  // date filters are MARKET days of the exit (entry while open) — see lib/marketDay.js
+  if (dateStart) { conditions.push('market_day(COALESCE(exit_datetime, entry_datetime), market) >= @dateStart'); params.dateStart = dateStart; }
+  if (dateEnd) { conditions.push('market_day(COALESCE(exit_datetime, entry_datetime), market) <= @dateEnd'); params.dateEnd = dateEnd; }
 
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
   const trades = db.prepare(`SELECT * FROM trades ${where} ORDER BY entry_datetime DESC`).all(params);
@@ -145,10 +148,9 @@ router.post('/', (req, res) => {
     b.market = metals.some(m => b.symbol.toUpperCase().includes(m)) ? 'METAL' : 'FOREX';
   }
 
-  // Derive weekday
-  if (b.entry_datetime && !b.weekday) {
-    const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    b.weekday = days[new Date(b.entry_datetime).getDay()];
+  // Derive weekday: the market day of the exit (entry while open)
+  if ((b.entry_datetime || b.exit_datetime) && !b.weekday) {
+    b.weekday = tradeWeekday(b.exit_datetime, b.entry_datetime, b.market);
   }
 
   try {
