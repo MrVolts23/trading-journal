@@ -1,5 +1,5 @@
-// All P&L aggregates here are NET OF COMMISSION (pnl + commission, commission stored negative),
-// so every screen agrees with the broker/prop-firm balance. Accounts without commission are unchanged.
+// All P&L aggregates here are NET OF COMMISSION AND SWAP (pnl + commission + swap, both stored signed),
+// so every screen agrees with the broker/prop-firm balance. Accounts without them are unchanged.
 const { getDb } = require('../db/database');
 // A trade's day is the MARKET day of its exit (entry while open). See lib/marketDay.js.
 const MARKET_DAY = 'market_day(COALESCE(exit_datetime, entry_datetime), market)';
@@ -59,12 +59,12 @@ function getDashboardStats(filters = {}) {
       SUM(CASE WHEN status = 'LOSS' THEN 1 ELSE 0 END) as losses,
       SUM(CASE WHEN status = 'B/E' THEN 1 ELSE 0 END) as breakeven,
       SUM(CASE WHEN status = 'OPEN' THEN 1 ELSE 0 END) as open_trades,
-      SUM(CASE WHEN pnl IS NOT NULL THEN pnl + COALESCE(commission, 0) ELSE 0 END) as net_pnl,
+      SUM(CASE WHEN pnl IS NOT NULL THEN pnl + COALESCE(commission, 0) + COALESCE(swap, 0) ELSE 0 END) as net_pnl,
       AVG(CASE WHEN r_multiple IS NOT NULL THEN r_multiple END) as avg_r_multiple,
-      AVG(CASE WHEN status = 'WIN' AND pnl IS NOT NULL THEN pnl + COALESCE(commission, 0) END) as avg_win,
-      AVG(CASE WHEN status = 'LOSS' AND pnl IS NOT NULL THEN pnl + COALESCE(commission, 0) END) as avg_loss,
-      MAX(pnl + COALESCE(commission, 0)) as largest_win,
-      MIN(pnl + COALESCE(commission, 0)) as largest_loss
+      AVG(CASE WHEN status = 'WIN' AND pnl IS NOT NULL THEN pnl + COALESCE(commission, 0) + COALESCE(swap, 0) END) as avg_win,
+      AVG(CASE WHEN status = 'LOSS' AND pnl IS NOT NULL THEN pnl + COALESCE(commission, 0) + COALESCE(swap, 0) END) as avg_loss,
+      MAX(pnl + COALESCE(commission, 0) + COALESCE(swap, 0)) as largest_win,
+      MIN(pnl + COALESCE(commission, 0) + COALESCE(swap, 0)) as largest_loss
     FROM trades ${where}
   `).get(params);
 
@@ -73,8 +73,8 @@ function getDashboardStats(filters = {}) {
   const winRate = closedCount > 0 ? (totals.wins || 0) / closedCount : 0;
 
   // Profit factor
-  const grossWin = db.prepare(`SELECT SUM(pnl + COALESCE(commission, 0)) as v FROM trades ${where ? where + " AND status='WIN'" : "WHERE status='WIN'"}`).get(params)?.v || 0;
-  const grossLoss = db.prepare(`SELECT ABS(SUM(pnl + COALESCE(commission, 0))) as v FROM trades ${where ? where + " AND status='LOSS'" : "WHERE status='LOSS'"}`).get(params)?.v || 0;
+  const grossWin = db.prepare(`SELECT SUM(pnl + COALESCE(commission, 0) + COALESCE(swap, 0)) as v FROM trades ${where ? where + " AND status='WIN'" : "WHERE status='WIN'"}`).get(params)?.v || 0;
+  const grossLoss = db.prepare(`SELECT ABS(SUM(pnl + COALESCE(commission, 0) + COALESCE(swap, 0))) as v FROM trades ${where ? where + " AND status='LOSS'" : "WHERE status='LOSS'"}`).get(params)?.v || 0;
   const profitFactor = grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? 999 : 0;
 
   // Trade expectancy
@@ -122,7 +122,7 @@ function getPnlOverTime(filters = {}) {
   return db.prepare(`
     SELECT
       ${MARKET_DAY} as date,
-      SUM(pnl + COALESCE(commission, 0)) as daily_pnl,
+      SUM(pnl + COALESCE(commission, 0) + COALESCE(swap, 0)) as daily_pnl,
       COUNT(*) as trade_count
     FROM trades ${where}
     GROUP BY ${MARKET_DAY}
@@ -141,8 +141,8 @@ function getStrategyPerformance(filters = {}) {
       COUNT(*) as total,
       SUM(CASE WHEN status='WIN' THEN 1 ELSE 0 END) as wins,
       SUM(CASE WHEN status='LOSS' THEN 1 ELSE 0 END) as losses,
-      SUM(pnl + COALESCE(commission, 0)) as net_pnl,
-      ROUND(AVG(pnl + COALESCE(commission, 0)), 2) as avg_pnl
+      SUM(pnl + COALESCE(commission, 0) + COALESCE(swap, 0)) as net_pnl,
+      ROUND(AVG(pnl + COALESCE(commission, 0) + COALESCE(swap, 0)), 2) as avg_pnl
     FROM trades ${stratFilter}
     GROUP BY strategy
     ORDER BY net_pnl DESC
@@ -159,7 +159,7 @@ function getMarketPerformance(filters = {}) {
       market,
       COUNT(*) as total,
       SUM(CASE WHEN status='WIN' THEN 1 ELSE 0 END) as wins,
-      SUM(pnl + COALESCE(commission, 0)) as net_pnl,
+      SUM(pnl + COALESCE(commission, 0) + COALESCE(swap, 0)) as net_pnl,
       ROUND(CAST(SUM(CASE WHEN status='WIN' THEN 1 ELSE 0 END) AS REAL) / NULLIF(COUNT(*),0), 4) as win_rate
     FROM trades ${mktFilter}
     GROUP BY market
@@ -178,7 +178,7 @@ function getWinRateByDay(filters = {}) {
       weekday,
       COUNT(*) as total,
       SUM(CASE WHEN status='WIN' THEN 1 ELSE 0 END) as wins,
-      SUM(pnl + COALESCE(commission, 0)) as net_pnl,
+      SUM(pnl + COALESCE(commission, 0) + COALESCE(swap, 0)) as net_pnl,
       ROUND(CAST(SUM(CASE WHEN status='WIN' THEN 1 ELSE 0 END) AS REAL) / NULLIF(COUNT(*),0), 4) as win_rate
     FROM trades ${dayFilter}
     GROUP BY weekday
@@ -250,7 +250,7 @@ function getCalendarData(year, month, filters = {}, overrideStart, overrideEnd) 
   return db.prepare(`
     SELECT
       ${MARKET_DAY} as date,
-      SUM(pnl + COALESCE(commission, 0)) as daily_pnl,
+      SUM(pnl + COALESCE(commission, 0) + COALESCE(swap, 0)) as daily_pnl,
       COUNT(*) as trade_count,
       SUM(CASE WHEN status='WIN' THEN 1 ELSE 0 END) as wins,
       SUM(CASE WHEN status='LOSS' THEN 1 ELSE 0 END) as losses
@@ -268,7 +268,7 @@ function getBalanceOverTime(filters = {}) {
   const dailyPnl = db.prepare(`
     SELECT
       ${MARKET_DAY} as date,
-      SUM(pnl + COALESCE(commission, 0)) as daily_pnl
+      SUM(pnl + COALESCE(commission, 0) + COALESCE(swap, 0)) as daily_pnl
     FROM trades ${where}
     GROUP BY ${MARKET_DAY}
     ORDER BY date ASC
@@ -317,10 +317,10 @@ function getPlanAdherence(filters = {}) {
       SUM(CASE WHEN rule_followed IS NULL THEN 1 ELSE 0 END) as untagged_count,
       COUNT(*) as total,
       -- P&L when plan was followed vs not
-      SUM(CASE WHEN rule_followed = 1 THEN pnl + COALESCE(commission, 0) ELSE 0 END) as pnl_followed,
-      SUM(CASE WHEN rule_followed = 0 THEN pnl + COALESCE(commission, 0) ELSE 0 END) as pnl_broke,
-      AVG(CASE WHEN rule_followed = 1 THEN pnl + COALESCE(commission, 0) END) as avg_pnl_followed,
-      AVG(CASE WHEN rule_followed = 0 THEN pnl + COALESCE(commission, 0) END) as avg_pnl_broke
+      SUM(CASE WHEN rule_followed = 1 THEN pnl + COALESCE(commission, 0) + COALESCE(swap, 0) ELSE 0 END) as pnl_followed,
+      SUM(CASE WHEN rule_followed = 0 THEN pnl + COALESCE(commission, 0) + COALESCE(swap, 0) ELSE 0 END) as pnl_broke,
+      AVG(CASE WHEN rule_followed = 1 THEN pnl + COALESCE(commission, 0) + COALESCE(swap, 0) END) as avg_pnl_followed,
+      AVG(CASE WHEN rule_followed = 0 THEN pnl + COALESCE(commission, 0) + COALESCE(swap, 0) END) as avg_pnl_broke
     FROM trades ${closedFilter}
   `).get(params);
 
@@ -350,7 +350,7 @@ function getSymbolPerformance(filters = {}) {
       COUNT(*) as total,
       SUM(CASE WHEN status='WIN' THEN 1 ELSE 0 END) as wins,
       SUM(CASE WHEN status='LOSS' THEN 1 ELSE 0 END) as losses,
-      SUM(pnl + COALESCE(commission, 0)) as net_pnl,
+      SUM(pnl + COALESCE(commission, 0) + COALESCE(swap, 0)) as net_pnl,
       AVG(CASE WHEN r_multiple IS NOT NULL THEN r_multiple END) as avg_r,
       ROUND(CAST(SUM(CASE WHEN status='WIN' THEN 1 ELSE 0 END) AS REAL) / NULLIF(COUNT(*),0), 4) as win_rate
     FROM trades ${f}
@@ -369,7 +369,7 @@ function getDailyPnl(filters = {}) {
       COUNT(*) as trades,
       SUM(CASE WHEN status='WIN' THEN 1 ELSE 0 END) as wins,
       SUM(CASE WHEN status='LOSS' THEN 1 ELSE 0 END) as losses,
-      SUM(pnl + COALESCE(commission, 0)) as net_pnl
+      SUM(pnl + COALESCE(commission, 0) + COALESCE(swap, 0)) as net_pnl
     FROM trades ${f}
     GROUP BY ${MARKET_DAY}
     ORDER BY date ASC
@@ -404,7 +404,7 @@ function movement(db, filters, { from = null, to = null, before = null } = {}) {
   if (from) { trade.push(`${MARKET_DAY} >= @from`); act.push('date >= @from'); params.from = from; }
   if (to) { trade.push(`${MARKET_DAY} <= @to`); act.push('date <= @to'); params.to = to; }
   if (before) { trade.push(`${MARKET_DAY} < @before`); act.push('date < @before'); params.before = before; }
-  const pnl = db.prepare(`SELECT COALESCE(SUM(pnl + COALESCE(commission, 0)), 0) AS v FROM trades WHERE ${trade.join(' AND ')}`).get(params).v;
+  const pnl = db.prepare(`SELECT COALESCE(SUM(pnl + COALESCE(commission, 0) + COALESCE(swap, 0)), 0) AS v FROM trades WHERE ${trade.join(' AND ')}`).get(params).v;
   const activity = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS v FROM account_activity WHERE ${act.join(' AND ')}`).get(params).v;
   const withdrawals = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS v FROM account_activity WHERE activity_type = 'withdrawal' AND ${act.slice(1).concat(['1=1']).join(' AND ')}`).get(params).v;
   return { pnl, activity, withdrawals };
@@ -497,7 +497,7 @@ function getSessionHeatmap(filters = {}) {
   const db = getDb();
   const { where, params } = buildWhereClause(filters);
   const f = where ? `${where} AND status != 'OPEN' AND exit_datetime IS NOT NULL` : `WHERE status != 'OPEN' AND exit_datetime IS NOT NULL`;
-  const rows = db.prepare(`SELECT exit_datetime, status, symbol, pnl + COALESCE(commission, 0) as net FROM trades ${f}`).all(params);
+  const rows = db.prepare(`SELECT exit_datetime, status, symbol, pnl + COALESCE(commission, 0) + COALESCE(swap, 0) as net FROM trades ${f}`).all(params);
   const cells = {};
   for (const r of rows) {
     const inst = wallToInstant(r.exit_datetime, TZ_FROM);
@@ -519,7 +519,7 @@ function getRDistribution(filters = {}) {
   const db = getDb();
   const { where, params } = buildWhereClause(filters);
   const f = where ? `${where} AND status != 'OPEN' AND r_multiple IS NOT NULL` : `WHERE status != 'OPEN' AND r_multiple IS NOT NULL`;
-  const rs = db.prepare(`SELECT r_multiple as r, pnl + COALESCE(commission, 0) as net FROM trades ${f}`).all(params);
+  const rs = db.prepare(`SELECT r_multiple as r, pnl + COALESCE(commission, 0) + COALESCE(swap, 0) as net FROM trades ${f}`).all(params);
   const closedTotal = db.prepare(`SELECT COUNT(*) as n FROM trades ${where ? where + " AND status != 'OPEN'" : "WHERE status != 'OPEN'"}`).get(params).n;
   if (!rs.length) return { count: 0, closed_total: closedTotal, bins: [], expectancy_r: null, avg_win_r: null, avg_loss_r: null };
   const step = 1.0; // whole-R bins read cleaner: -2R to -1R, -1R to 0, 0 to +1R…
@@ -548,7 +548,7 @@ function getStreaks(filters = {}, limit = 40) {
   const db = getDb();
   const { where, params } = buildWhereClause(filters);
   const f = where ? `${where} AND status IN ('WIN','LOSS','B/E')` : `WHERE status IN ('WIN','LOSS','B/E')`;
-  const all = db.prepare(`SELECT id, trade_id, symbol, status, pnl + COALESCE(commission, 0) as net, COALESCE(exit_datetime, entry_datetime) as t FROM trades ${f} ORDER BY t ASC, id ASC`).all(params);
+  const all = db.prepare(`SELECT id, trade_id, symbol, status, pnl + COALESCE(commission, 0) + COALESCE(swap, 0) as net, COALESCE(exit_datetime, entry_datetime) as t FROM trades ${f} ORDER BY t ASC, id ASC`).all(params);
   let longestWin = 0, longestLoss = 0, run = 0, runType = null;
   for (const x of all) {
     const k = x.status === 'WIN' ? 'W' : x.status === 'LOSS' ? 'L' : 'B';

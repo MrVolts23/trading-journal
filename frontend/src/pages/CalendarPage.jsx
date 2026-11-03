@@ -115,7 +115,7 @@ function TradesPopup({ dateStr, anchorRect, account, onClose }) {
   const maxH   = 360;
   const { left, top } = calcPopupPos(anchorRect, popupW, maxH);
 
-  const netOf = (t) => (t.pnl == null ? null : (t.pnl || 0) + (t.commission || 0));
+  const netOf = (t) => (t.pnl == null ? null : (t.pnl || 0) + (t.commission || 0) + (t.swap || 0));
   const totalPnl = trades.reduce((s, t) => s + (netOf(t) || 0), 0);
 
   return createPortal(

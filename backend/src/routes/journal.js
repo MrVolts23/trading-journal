@@ -32,7 +32,7 @@ router.get('/', (req, res) => {
       SELECT id, trade_id, account, symbol, market, position, strategy,
              entry_datetime, exit_datetime, pnl, status, lot_size,
              grade, lessons, emotion, rule_followed, entry_quality, exit_quality,
-             session, screenshot, risk_usd, r_multiple, commission,
+             session, screenshot, risk_usd, r_multiple, commission, swap,
              COALESCE(reviewed, 0) as reviewed
       FROM trades ${where}
       ORDER BY ${sortCol} ${sortDir}

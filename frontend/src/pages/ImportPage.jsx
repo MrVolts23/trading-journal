@@ -771,6 +771,11 @@ export default function ImportPage() {
                 <div className="stat-label mt-1">Errors</div>
               </div>
             </div>
+            {importResult.swapFilled > 0 && (
+              <div className="text-xs font-mono text-terminal-green bg-green-950/30 border border-terminal-green/30 px-4 py-2 rounded w-full max-w-sm text-center">
+                Overnight swap was filled in on {importResult.swapFilled} trade{importResult.swapFilled === 1 ? '' : 's'} already in the journal, so their net results now match the broker.
+              </div>
+            )}
             {importResult.repaired > 0 && (
               <div className="text-xs font-mono text-terminal-green bg-green-950/30 border border-terminal-green/30 px-4 py-2 rounded w-full max-w-sm text-center">
                 {importResult.repaired} earlier import{importResult.repaired === 1 ? '' : 's'} had no dates and {importResult.repaired === 1 ? 'was' : 'were'} repaired, so {importResult.repaired === 1 ? 'it now shows' : 'they now show'} on the calendar.

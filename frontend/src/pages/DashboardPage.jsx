@@ -387,7 +387,7 @@ export default function DashboardPage() {
       </Band>
 
       {/* ── EQUITY HERO ─────────────────────────────────────────────────── */}
-      <ChartCard title="Equity curve" right={eq?.points?.length ? `${eq.points[0].date} → ${eq.points[eq.points.length - 1].date} · net of commission` : null}>
+      <ChartCard title="Equity curve" right={eq?.points?.length ? `${eq.points[0].date} → ${eq.points[eq.points.length - 1].date} · net of commission and swap` : null}>
         <EquityChart eq={eq} />
       </ChartCard>
 
@@ -410,7 +410,7 @@ export default function DashboardPage() {
         <ChartCard title="Net P&L by day" right={ftmo ? 'Prague days · FTMO daily limit shown' : 'market days'} className="xl:col-span-3">
           <DailyPnlChart daily={daily} ftmo={ftmo} />
         </ChartCard>
-        <ChartCard title="Trades by asset" right="net of commission" className="xl:col-span-2">
+        <ChartCard title="Trades by asset" right="net of commission and swap" className="xl:col-span-2">
           <div className="grid grid-cols-1 2xl:grid-cols-[1fr_180px] gap-4 items-center">
             <AssetTable symbols={symbols} />
             <AssetDonut symbols={symbols} />

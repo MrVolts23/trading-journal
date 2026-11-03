@@ -757,13 +757,13 @@ function commitImport(rows) {
     INSERT OR IGNORE INTO trades (
       trade_id, account, symbol, market, position, strategy,
       entry_datetime, entry_price, lot_size, take_profit, stop_loss,
-      exit_price, exit_datetime, commission, position_size, pip_size,
+      exit_price, exit_datetime, commission, swap, position_size, pip_size,
       pip_value, pnl, pnl_pct, r_multiple, risk_reward, max_profit,
       max_loss, duration, weekday, status, lessons
     ) VALUES (
       @trade_id, @account, @symbol, @market, @position, @strategy,
       @entry_datetime, @entry_price, @lot_size, @take_profit, @stop_loss,
-      @exit_price, @exit_datetime, @commission, @position_size, @pip_size,
+      @exit_price, @exit_datetime, @commission, @swap, @position_size, @pip_size,
       @pip_value, @pnl, @pnl_pct, @r_multiple, @risk_reward, @max_profit,
       @max_loss, @duration, @weekday, @status, @lessons
     )
@@ -791,6 +791,7 @@ function commitImport(rows) {
           exit_price:    row.exit_price    || null,
           exit_datetime: row.exit_datetime || null,
           commission:    row.commission    || 0,
+          swap:          typeof row.swap === 'number' ? row.swap : null,
           position_size: row.position_size || null,
           pip_size:      row.pip_size      || null,
           pip_value:     row.pip_value     || null,
@@ -809,7 +810,7 @@ function commitImport(rows) {
           // Replace the broken row's imported fields; keep its id, notes, grade and strategy.
           db.prepare(`UPDATE trades SET account=@account, symbol=@symbol, market=@market, position=@position,
             entry_datetime=@entry_datetime, entry_price=@entry_price, lot_size=@lot_size, take_profit=@take_profit,
-            stop_loss=@stop_loss, exit_price=@exit_price, exit_datetime=@exit_datetime, commission=@commission,
+            stop_loss=@stop_loss, exit_price=@exit_price, exit_datetime=@exit_datetime, commission=@commission, swap=@swap,
             pnl=@pnl, r_multiple=COALESCE(@r_multiple, r_multiple), duration=@duration, weekday=@weekday,
             status=@status, updated_at=datetime('now') WHERE trade_id=@trade_id`).run(clean);
           repaired++;
@@ -824,8 +825,17 @@ function commitImport(rows) {
   });
 
   importMany(newRows);
-  for (const acctName of uniqueAccounts) { try { require('./plannedRService').recomputePlannedR(acctName); } catch (_) {} }
-  return { imported, repaired, errors, skipped: rows.filter(r => r._isDuplicate).length };
+  // Trades already in the journal that were imported before swap was stored: fill it in from this
+  // file (once), so their net results match the broker. Rows that already have a swap are left alone.
+  const fillSwap = db.prepare("UPDATE trades SET swap=@swap, updated_at=datetime('now') WHERE trade_id=@trade_id AND swap IS NULL");
+  let swapFilled = 0;
+  const touched = new Set(uniqueAccounts);
+  for (const r of rows) {
+    if (!r._isDuplicate || typeof r.swap !== 'number') continue;
+    if (fillSwap.run({ swap: r.swap, trade_id: String(r.trade_id) }).changes) { swapFilled++; if (r.account) touched.add(r.account); }
+  }
+  for (const acctName of touched) { try { require('./plannedRService').recomputePlannedR(acctName); } catch (_) {} }
+  return { imported, repaired, swapFilled, errors, skipped: rows.filter(r => r._isDuplicate).length };
 }
 
 // ─── Exports ──────────────────────────────────────────────────────────────────

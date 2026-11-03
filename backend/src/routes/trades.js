@@ -33,7 +33,7 @@ router.get('/', (req, res) => {
   const trades = db.prepare(`
     WITH running AS (
       SELECT id,
-        SUM(COALESCE(pnl, 0) + COALESCE(commission, 0)) OVER (
+        SUM(COALESCE(pnl, 0) + COALESCE(commission, 0) + COALESCE(swap, 0)) OVER (
           PARTITION BY account
           ORDER BY entry_datetime, id
           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
@@ -100,7 +100,7 @@ router.get('/export/csv', (req, res) => {
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
   const trades = db.prepare(`SELECT * FROM trades ${where} ORDER BY entry_datetime DESC`).all(params);
 
-  const headers = ['trade_id','account','symbol','market','position','strategy','entry_datetime','entry_price','lot_size','take_profit','stop_loss','exit_price','exit_datetime','commission','pnl','pnl_pct','r_multiple','risk_reward','duration','weekday','status','lessons'];
+  const headers = ['trade_id','account','symbol','market','position','strategy','entry_datetime','entry_price','lot_size','take_profit','stop_loss','exit_price','exit_datetime','commission','swap','pnl','pnl_pct','r_multiple','risk_reward','duration','weekday','status','lessons'];
   const csv = [
     headers.join(','),
     ...trades.map(t => headers.map(h => {

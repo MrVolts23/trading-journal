@@ -98,7 +98,7 @@ router.get('/starting-balance', (req, res) => {
   ).all();
 
   // Net P&L from all closed trades
-  const pnlRow = db.prepare(`SELECT COALESCE(SUM(pnl + COALESCE(commission, 0)), 0) AS net_pnl FROM trades WHERE pnl IS NOT NULL`).get();
+  const pnlRow = db.prepare(`SELECT COALESCE(SUM(pnl + COALESCE(commission, 0) + COALESCE(swap, 0)), 0) AS net_pnl FROM trades WHERE pnl IS NOT NULL`).get();
 
   let totalDeposits      = startRow.total_deposits    || 0;
   const totalWithdrawals = wdRow.total_withdrawals    || 0;
@@ -139,7 +139,7 @@ router.get('/weekly-pnl', (req, res) => {
     SELECT
       market_week(COALESCE(exit_datetime, entry_datetime), market) as week_key,   -- Monday of the market week
       market_week(COALESCE(exit_datetime, entry_datetime), market) as week_start,
-      SUM(pnl + COALESCE(commission, 0))                          as total_pnl,
+      SUM(pnl + COALESCE(commission, 0) + COALESCE(swap, 0))                          as total_pnl,
       COUNT(*)                          as trade_count,
       SUM(CASE WHEN status='WIN'  THEN 1 ELSE 0 END) as wins,
       SUM(CASE WHEN status='LOSS' THEN 1 ELSE 0 END) as losses

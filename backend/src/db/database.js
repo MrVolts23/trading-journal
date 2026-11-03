@@ -82,6 +82,7 @@ function runMigrations(db) {
   if (!cols.includes('screenshot'))     db.exec("ALTER TABLE trades ADD COLUMN screenshot TEXT");       // base64 data URL
   if (!cols.includes('reviewed'))       db.exec("ALTER TABLE trades ADD COLUMN reviewed INTEGER DEFAULT 0"); // 1=reviewed
   if (!cols.includes('risk_usd'))       db.exec("ALTER TABLE trades ADD COLUMN risk_usd REAL"); // planned $ risk on this trade (overrides the account standard)
+  if (!cols.includes('swap'))           db.exec("ALTER TABLE trades ADD COLUMN swap REAL");     // overnight swap, counted in net like commission (NULL = never imported)
   // Standard risk per trade, per account, with an effective-from date. 1R = this many dollars.
   db.exec(`CREATE TABLE IF NOT EXISTS account_risk (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

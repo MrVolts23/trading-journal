@@ -44,7 +44,7 @@ export function rebuildPropDaysFromTrades(acct, trades, todayKey) {
     if (!dt) continue;
     const day = String(dt).slice(0, 10);
     if (acct.startDate && day < acct.startDate) continue;
-    const net = (Number(t.pnl) || 0) + (Number(t.commission) || 0);
+    const net = (Number(t.pnl) || 0) + (Number(t.commission) || 0) + (Number(t.swap) || 0);
     (byDay[day] ||= []).push(Math.round(net * 100) / 100);
   }
   const prevDip = (d) => (acct.days || []).find((x) => x.date === d)?.worstDip || 0;
