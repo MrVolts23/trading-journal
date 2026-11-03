@@ -580,14 +580,16 @@ function applyMapping(rows, mapping, loginToAccount) {
 function detectDuplicates(trades) {
   const db = getDb();
   const existing = new Map(
-    db.prepare('SELECT trade_id, entry_datetime, exit_datetime FROM trades').all().map(r => [r.trade_id, r])
+    db.prepare('SELECT trade_id, entry_datetime, exit_datetime, swap FROM trades').all().map(r => [r.trade_id, r])
   );
   return trades.map(t => {
     const row = existing.get(String(t.trade_id));
     // A stored row with no dates at all is a broken earlier import (it can never show on the calendar).
     // If this file has the dates, repair that row instead of skipping the trade as a duplicate.
     const repair = !!row && !row.entry_datetime && !row.exit_datetime && !!(t.entry_datetime || t.exit_datetime);
-    return { ...t, _isDuplicate: !!row && !repair, _isRepair: repair };
+    // A duplicate whose stored row has never had swap recorded, when this file carries it: the commit fills it in.
+    const swapFill = !!row && !repair && row.swap == null && typeof t.swap === 'number';
+    return { ...t, _isDuplicate: !!row && !repair, _isRepair: repair, _swapFill: swapFill };
   });
 }
 
@@ -730,6 +732,7 @@ function previewImport(rows, mapping, importFromDate, account) {
     total: withDups.length,
     new_count: withDups.filter(r => !r._isDuplicate).length,
     duplicate_count: withDups.filter(r => r._isDuplicate).length,
+    swap_fill_count: withDups.filter(r => r._swapFill).length,
     noise_count,
     preview: withDups.slice(0, 20),
     all_rows: withDups,

@@ -660,7 +660,7 @@ export default function ImportPage() {
             <div className="card p-4 border border-terminal-amber/50 bg-amber-950/20">
               <div className="text-xs font-mono text-terminal-amber">
                 {previewData.duplicate_count > 0
-                  ? `✓ All ${previewData.duplicate_count} trades already imported — no duplicates will be added.${previewData.balance_rows?.length > 0 ? ' Click below to save the detected withdrawal/deposit.' : ''}`
+                  ? `✓ All ${previewData.duplicate_count} trades already imported — no duplicates will be added.${previewData.swap_fill_count > 0 ? ` ${previewData.swap_fill_count} of them have no swap recorded yet; click below to fill it in from this file.` : ''}${previewData.balance_rows?.length > 0 ? ' Click below to save the detected withdrawal/deposit.' : ''}`
                   : `⚠️ No new trades found. Check that your column mapping is correct — especially P&L, Symbol, and Entry Date.`
                 }
                 {previewData.noise_count > 0 && ` ${previewData.noise_count} rows were filtered as noise.`}
@@ -738,12 +738,14 @@ export default function ImportPage() {
 
           <div className="flex gap-3">
             <button onClick={() => setStep(1)} className="btn-ghost">← Back</button>
-            <button onClick={handleCommit} disabled={loading || (previewData.new_count === 0 && !previewData.balance_rows?.length)} className="btn-primary">
+            <button onClick={handleCommit} disabled={loading || (previewData.new_count === 0 && !previewData.balance_rows?.length && !previewData.swap_fill_count)} className="btn-primary">
               {loading ? 'Importing...' : previewData.new_count > 0
                 ? `Import ${previewData.new_count} Trades →`
                 : previewData.balance_rows?.length > 0
                   ? `Save ${previewData.balance_rows.length} Withdrawal/Deposit →`
-                  : 'Nothing to Import'}
+                  : previewData.swap_fill_count > 0
+                    ? `Fill swap on ${previewData.swap_fill_count} trades →`
+                    : 'Nothing to Import'}
             </button>
           </div>
         </div>
