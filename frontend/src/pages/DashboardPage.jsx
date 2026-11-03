@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import {
   getDashboardStats, getStrategyPerformance, getWinRateByDay,
-  getPlanAdherence, getStartingBalance, getSymbolPerformance, getDailyPnl, getEquityCurve,
+  getPlanAdherence, getSymbolPerformance, getDailyPnl, getEquityCurve,
   getSessionHeatmap, getStreaks,
 } from '../lib/api';
 import { fmtCurrency, fmt, CHART_COLORS } from '../lib/utils';
@@ -154,7 +154,7 @@ function EquityChart({ eq }) {
             ['From peak', p.drawdown < 0 ? signed(p.drawdown) : 'at a new high', p.drawdown < 0 ? 'text-terminal-red' : 'text-terminal-green'],
           ]} />;
         }} />
-        <ReferenceLine y={eq.start_balance} stroke={C.dim} strokeDasharray="2 4" label={{ value: `start ${kFmt(eq.start_balance)}`, position: 'insideTopLeft', fill: C.muted, fontSize: 10, fontFamily: 'monospace' }} />
+        <ReferenceLine y={eq.start_balance} stroke={C.dim} strokeDasharray="2 4" label={{ value: `${eq.ranged ? 'range start' : 'start'} ${kFmt(eq.start_balance)}`, position: 'insideTopLeft', fill: C.muted, fontSize: 10, fontFamily: 'monospace' }} />
         {eq.ftmo && inWindow(eq.ftmo.floor) && <ReferenceLine y={eq.ftmo.floor} stroke={C.red} strokeDasharray="4 4" label={{ value: `FTMO max loss ${kFmt(eq.ftmo.floor)}`, position: 'insideBottomLeft', fill: C.red, fontSize: 10, fontFamily: 'monospace' }} />}
         {eq.ftmo && inWindow(eq.ftmo.target) && <ReferenceLine y={eq.ftmo.target} stroke={C.green} strokeDasharray="4 4" label={{ value: `target ${kFmt(eq.ftmo.target)}`, position: 'insideTopLeft', fill: C.green, fontSize: 10, fontFamily: 'monospace' }} />}
         <Line type="monotone" dataKey="peak" stroke={C.dim} strokeWidth={1} strokeDasharray="1 3" dot={false} isAnimationActive={false} />
@@ -331,7 +331,6 @@ export default function DashboardPage() {
   const [planAdherence, setPlanAdherence] = useState(null);
   const [heat, setHeat] = useState([]);
   const [streaks, setStreaks] = useState(null);
-  const [totalExtracted, setTotalExtracted] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -339,13 +338,12 @@ export default function DashboardPage() {
     setLoading(true);
     Promise.all([
       getDashboardStats(p), getEquityCurve(p), getDailyPnl(p), getSymbolPerformance(p),
-      getStrategyPerformance(p), getWinRateByDay(p), getPlanAdherence(p), getStartingBalance(),
+      getStrategyPerformance(p), getWinRateByDay(p), getPlanAdherence(p),
       getSessionHeatmap(p), getStreaks(p),
-    ]).then(([s, e, d, sym, strat, day, adherence, realBalance, hm, st]) => {
+    ]).then(([s, e, d, sym, strat, day, adherence, hm, st]) => {
       setStats(s); setEq(e); setDaily(d); setSymbols(sym); setStrategyData(strat); setDayData(day);
       setHeat(hm); setStreaks(st);
       setPlanAdherence(adherence);
-      setTotalExtracted(Math.abs(realBalance?.total_withdrawals || 0));
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [filters.account, filters.dateStart, filters.dateEnd]);
@@ -365,16 +363,17 @@ export default function DashboardPage() {
   const tagged = planAdherence?.tagged || 0;
   const closed = (stats?.wins || 0) + (stats?.losses || 0) + (stats?.breakeven || 0);
   const ftmo = eq?.ftmo || null;
+  const ranged = !!eq?.ranged; // a date range is set in the top bar: every number below is for that range
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px]">
 
       {/* ── ACCOUNT ─────────────────────────────────────────────────────── */}
       <Band title="Account" icon={Wallet}>
-        <Tile label="Balance" value={fmtCurrency(stats?.current_balance || 0)} sub={start ? `started at ${fmtCurrency(start)}` : undefined} big />
-        <Tile label="Net P&L" value={signed(stats?.net_pnl)} toneOf={stats?.net_pnl} sub={netPct != null ? `${netPct >= 0 ? '+' : ''}${netPct.toFixed(2)}% of start · ${daysTraded} day${daysTraded === 1 ? '' : 's'} traded` : undefined} big />
-        <Tile label="Peak balance" value={fmtCurrency(eq?.peak_balance || 0)} sub={eq && eq.end_balance < eq.peak_balance ? `now ${signed(eq.end_balance - eq.peak_balance)} from the peak` : 'at the peak now'} />
-        <Tile label="Max drawdown" value={eq?.max_drawdown_usd ? signed(eq.max_drawdown_usd) : '$0'} toneOf={eq?.max_drawdown_usd || 0} sub={eq?.max_drawdown_pct ? `${eq.max_drawdown_pct}% from peak` : 'no drawdown yet'} />
+        <Tile label="Balance" value={fmtCurrency(stats?.current_balance || 0)} sub={start ? (ranged ? `${fmtCurrency(start)} going into this range` : `started at ${fmtCurrency(start)}`) : undefined} big />
+        <Tile label="Net P&L" value={signed(stats?.net_pnl)} toneOf={stats?.net_pnl} sub={netPct != null ? `${netPct >= 0 ? '+' : ''}${netPct.toFixed(2)}% of ${ranged ? 'the range start' : 'start'} · ${daysTraded} day${daysTraded === 1 ? '' : 's'} traded` : undefined} big />
+        <Tile label={ranged ? 'Peak balance in range' : 'Peak balance'} value={fmtCurrency(eq?.peak_balance || 0)} sub={eq && eq.end_balance < eq.peak_balance ? `now ${signed(eq.end_balance - eq.peak_balance)} from the peak` : 'at the peak now'} />
+        <Tile label={ranged ? 'Max drawdown in range' : 'Max drawdown'} value={eq?.max_drawdown_usd ? signed(eq.max_drawdown_usd) : '$0'} toneOf={eq?.max_drawdown_usd || 0} sub={eq?.max_drawdown_pct ? `${eq.max_drawdown_pct}% from peak` : 'no drawdown yet'} />
         {ftmo ? (
           <Tile label="FTMO max loss room" value={fmtCurrency((stats?.current_balance || 0) - ftmo.floor)} sub={`floor at ${fmtCurrency(ftmo.floor)} · target ${fmtCurrency(ftmo.target)}`} accent="text-terminal-amber" />
         ) : (
@@ -382,8 +381,8 @@ export default function DashboardPage() {
         )}
         <div className="card p-4 flex flex-col gap-1 border border-terminal-green/20">
           <span className="stat-label flex items-center gap-1.5"><PiggyBank className="w-3 h-3 text-terminal-green" />Funds extracted</span>
-          <span className="text-xl font-mono font-bold text-terminal-green">{fmtCurrency(totalExtracted, true)}</span>
-          <span className="text-[11px] font-mono text-terminal-muted">actual broker withdrawals</span>
+          <span className="text-xl font-mono font-bold text-terminal-green">{fmtCurrency(Math.abs(stats?.withdrawals || 0), true)}</span>
+          <span className="text-[11px] font-mono text-terminal-muted">{ranged ? 'broker withdrawals in this range' : 'actual broker withdrawals'}</span>
         </div>
       </Band>
 

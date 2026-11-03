@@ -85,34 +85,13 @@ function getDashboardStats(filters = {}) {
   const ddWhere = filters.account && filters.account !== 'All' ? 'WHERE account = @account' : '';
   const drawdown = db.prepare(`SELECT MIN(drawdown_usd) as max_dd_usd, MIN(drawdown_pct) as max_dd_pct FROM account_activity ${ddWhere}`).get(ddParams);
 
-  // Current balance = total deposits + net P&L from trades + withdrawals (negative amounts)
-  // If account_activity has no deposit records (fresh install — user set initial_deposit manually
-  // in Settings), fall back to the sum of initial_deposit across all accounts.
-  const depositTotals = db.prepare(`
-    SELECT
-      COALESCE(SUM(CASE WHEN activity_type = 'deposit'    THEN amount ELSE 0 END), 0) AS total_deposits,
-      COALESCE(SUM(CASE WHEN activity_type = 'withdrawal' THEN amount ELSE 0 END), 0) AS total_withdrawals,
-      COALESCE(SUM(CASE WHEN activity_type = 'correction' THEN amount ELSE 0 END), 0) AS total_corrections
-    FROM account_activity
-  `).get();
-
-  let seedBalance = depositTotals.total_deposits;
-  if (seedBalance === 0) {
-    // No deposit history in account_activity — use manually-entered starting balance
-    const acctWhere = filters.account && filters.account !== 'All'
-      ? `WHERE name = '${filters.account.replace(/'/g, "''")}'`
-      : '';
-    const initRow = db.prepare(
-      `SELECT COALESCE(SUM(initial_deposit), 0) AS total FROM accounts ${acctWhere}`
-    ).get();
-    seedBalance = initRow?.total || 0;
-  }
-
-  // Balance = deposits + P&L + withdrawals (negative) + corrections (signed)
-  // Corrections adjust the running balance but are NOT shown as extracted funds on the dashboard
-  const latestBalance = {
-    total_balance: seedBalance + (totals.net_pnl || 0) + (depositTotals.total_withdrawals || 0) + (depositTotals.total_corrections || 0)
-  };
+  // Balance is the balance at the END of the date range (everything up to dateEnd, whatever
+  // dateStart is), so a range never shows "starting balance + this week's P&L" as if it were the
+  // account balance. Funds extracted are the withdrawals inside the range.
+  const { seed } = seedBalance(db, filters);
+  const upTo = movement(db, filters, { to: filters.dateEnd || null });
+  const inRange = movement(db, filters, { from: filters.dateStart || null, to: filters.dateEnd || null });
+  const current_balance = parseFloat((seed + upTo.pnl + upTo.activity).toFixed(2));
 
   return {
     total_trades: totals.total_trades || 0,
@@ -131,7 +110,8 @@ function getDashboardStats(filters = {}) {
     largest_loss: totals.largest_loss || 0,
     max_drawdown_usd: drawdown?.max_dd_usd || 0,
     max_drawdown_pct: drawdown?.max_dd_pct || 0,
-    current_balance: latestBalance?.total_balance || 0,
+    current_balance,
+    withdrawals: inRange.withdrawals,
   };
 }
 
@@ -399,21 +379,60 @@ function getDailyPnl(filters = {}) {
 // ─── Equity curve: starting balance + daily net P&L + deposits/withdrawals, with peak and drawdown ──
 // One account: seeded with that account's starting balance (initial_deposit, or its deposit rows).
 // All accounts: seeded with the sum of starting balances.
+// ── Balance helpers ───────────────────────────────────────────────────────────
+// The seed is the money that opened the account(s): deposit rows when there are any, else the
+// starting balance typed in Settings. Closed-trade P&L and activity (withdrawals, corrections)
+// then move it. Everything is scoped to the filtered account.
+function accountScope(filters) {
+  const one = filters.account && filters.account !== 'All' ? filters.account : null;
+  return { one, params: one ? { account: one } : {} };
+}
+function seedBalance(db, filters) {
+  const { one, params } = accountScope(filters);
+  const accounts = db.prepare(`SELECT name, broker, initial_deposit, deposit_date FROM accounts ${one ? 'WHERE name = @account' : ''}`).all(params);
+  const dep = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS v FROM account_activity WHERE activity_type = 'deposit' ${one ? 'AND account = @account' : ''}`).get(params).v;
+  const seeded = dep > 0;
+  return { accounts, seed: seeded ? dep : accounts.reduce((s, a) => s + (a.initial_deposit || 0), 0), seeded };
+}
+// Net closed P&L, non-deposit activity and withdrawals in a window of market days.
+// from/to are inclusive, before is exclusive; any of them may be null. Deposits are never
+// counted here: when deposit rows exist they are all in the seed already.
+function movement(db, filters, { from = null, to = null, before = null } = {}) {
+  const { one, params } = accountScope(filters);
+  const trade = ["status != 'OPEN'"], act = ["activity_type != 'deposit'"];
+  if (one) { trade.push('account = @account'); act.push('account = @account'); }
+  if (from) { trade.push(`${MARKET_DAY} >= @from`); act.push('date >= @from'); params.from = from; }
+  if (to) { trade.push(`${MARKET_DAY} <= @to`); act.push('date <= @to'); params.to = to; }
+  if (before) { trade.push(`${MARKET_DAY} < @before`); act.push('date < @before'); params.before = before; }
+  const pnl = db.prepare(`SELECT COALESCE(SUM(pnl + COALESCE(commission, 0)), 0) AS v FROM trades WHERE ${trade.join(' AND ')}`).get(params).v;
+  const activity = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS v FROM account_activity WHERE ${act.join(' AND ')}`).get(params).v;
+  const withdrawals = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS v FROM account_activity WHERE activity_type = 'withdrawal' AND ${act.slice(1).concat(['1=1']).join(' AND ')}`).get(params).v;
+  return { pnl, activity, withdrawals };
+}
+// Activity rows (non-deposit) inside the window, for the equity curve's events.
+function activityRows(db, filters, { from = null, to = null }) {
+  const { one, params } = accountScope(filters);
+  const act = ["activity_type != 'deposit'"];
+  if (one) act.push('account = @account');
+  if (from) { act.push('date >= @from'); params.from = from; }
+  if (to) { act.push('date <= @to'); params.to = to; }
+  return db.prepare(`SELECT date, activity_type, amount FROM account_activity WHERE ${act.join(' AND ')} ORDER BY date ASC`).all(params);
+}
+
+// The equity curve for the filtered account and date range. With a range, the curve opens at the
+// balance the account actually had going into the range (seed + everything before dateStart) and
+// peak / drawdown are measured inside the range only. The FTMO floor and target always come from
+// the account's real starting balance, never from the range.
 function getEquityCurve(filters = {}) {
   const db = getDb();
-  const oneAccount = filters.account && filters.account !== 'All' ? filters.account : null;
-  const acctWhere = oneAccount ? 'WHERE name = @account' : '';
-  const acctParams = oneAccount ? { account: oneAccount } : {};
-  const accounts = db.prepare(`SELECT name, broker, initial_deposit, deposit_date FROM accounts ${acctWhere}`).all(acctParams);
-  const actWhere = oneAccount ? 'WHERE account = @account' : '';
-  const activity = db.prepare(`SELECT date, activity_type, amount FROM account_activity ${actWhere} ORDER BY date ASC`).all(acctParams);
-  const deposits = activity.filter(a => a.activity_type === 'deposit').reduce((s, a) => s + (a.amount || 0), 0);
-  // Starting balance: deposit rows if any, else the manual starting balance on the account(s)
-  const startBalance = deposits > 0 ? deposits : accounts.reduce((s, a) => s + (a.initial_deposit || 0), 0);
+  const { one } = accountScope(filters);
+  const { accounts, seed } = seedBalance(db, filters);
+  const from = filters.dateStart || null, to = filters.dateEnd || null;
+  const before = from ? movement(db, filters, { before: from }) : { pnl: 0, activity: 0 };
+  const startBalance = parseFloat((seed + before.pnl + before.activity).toFixed(2));
   const daily = getDailyPnl(filters);
   const events = {};
-  for (const a of activity) {
-    if (a.activity_type === 'deposit' && deposits > 0) continue; // already in the seed
+  for (const a of activityRows(db, filters, { from, to })) {
     (events[a.date] ||= { pnl: 0, activity: 0, trades: 0, wins: 0, losses: 0 }).activity += a.amount || 0;
   }
   for (const d of daily) {
@@ -421,7 +440,7 @@ function getEquityCurve(filters = {}) {
     e.pnl += d.net_pnl; e.trades += d.trades; e.wins += d.wins; e.losses += d.losses;
   }
   const dates = Object.keys(events).sort();
-  const firstDate = accounts.map(a => a.deposit_date).filter(Boolean).sort()[0] || dates[0] || null;
+  const firstDate = from || accounts.map(a => a.deposit_date).filter(Boolean).sort()[0] || dates[0] || null;
   let balance = startBalance, peak = startBalance, maxDd = 0, maxDdPct = 0;
   const points = [];
   if (firstDate && (!dates.length || firstDate < dates[0])) points.push({ date: firstDate, balance: startBalance, day_pnl: 0, trades: 0, wins: 0, losses: 0, peak: startBalance, drawdown: 0, start: true });
@@ -433,16 +452,18 @@ function getEquityCurve(filters = {}) {
     if (dd < maxDd) { maxDd = dd; maxDdPct = peak > 0 ? dd / peak : 0; }
     points.push({ date, balance: parseFloat(balance.toFixed(2)), day_pnl: parseFloat(e.pnl.toFixed(2)), activity: e.activity || 0, trades: e.trades, wins: e.wins, losses: e.losses, peak: parseFloat(peak.toFixed(2)), drawdown: parseFloat(dd.toFixed(2)) });
   }
-  const isFtmo = oneAccount && accounts[0]?.broker === 'FTMO';
+  const isFtmo = one && accounts[0]?.broker === 'FTMO';
   return {
-    start_balance: startBalance,
+    start_balance: startBalance,          // balance going into the range (= initial when no range)
+    initial_balance: seed,                // what the account opened with
     end_balance: parseFloat(balance.toFixed(2)),
     peak_balance: parseFloat(peak.toFixed(2)),
     max_drawdown_usd: parseFloat(maxDd.toFixed(2)),
     max_drawdown_pct: parseFloat((maxDdPct * 100).toFixed(2)),
-    account: oneAccount, broker: accounts[0]?.broker || null,
+    ranged: !!(from || to),
+    account: one, broker: accounts[0]?.broker || null,
     // FTMO 2-Step lines, drawn on the charts for a single FTMO account
-    ftmo: isFtmo ? { floor: startBalance * 0.9, daily_allowance: startBalance * 0.05, target: startBalance * 1.10 } : null,
+    ftmo: isFtmo ? { floor: seed * 0.9, daily_allowance: seed * 0.05, target: seed * 1.10 } : null,
     points,
   };
 }
